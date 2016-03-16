@@ -1,0 +1,28 @@
+
+
+
+
+```{r}
+
+my.path <-"/home/winks/R_HOME/R_WORK/mArray BAC reporter studie/results/DEGs/Rat in vivo single brainarray/filtered/high 24hrs"
+my.files<-dir(my.path)
+
+out.path<- "/home/winks/R_HOME/R_WORK/mArray BAC reporter studie/results/DEGs/Rat in vivo single brainarray/filtered/selected DEG/high 24hrs"
+for (i in 1 : length(my.files)) {
+
+  path.to.file <- paste(my.path, my.files[[i]], sep ="/")
+
+buffer <- read.delim(file = path.to.file, header = TRUE, sep = ",", row.names =1)
+
+name.file <- paste(gsub("_Control_24hr_rma_.csv","",  my.files[[i]]), "log2FCvan1.2 aveExpr_6.5 P.val_0.05", ".txt", sep ="")
+
+sel.genes <- buffer[ abs(buffer$logFC) >= log2(1.2) & buffer$AveExpr >=6.5 & buffer$P.Value <= 0.05 , c("ENTREZID","logFC")]
+print(dim(sel.genes))
+  
+  write.table(sel.genes, file = paste(out.path, name.file, sep="/"), sep = "\t", row.names = F )
+  }
+
+
+```
+
+

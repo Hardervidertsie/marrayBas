@@ -1,0 +1,1317 @@
+micro array analyse Bas ter Braak
+========================================================
+
+verschillende zaken testen:
+- t.test
+- laden van alle/ alleen noodzakelijk CELL files for limma contrasten
+- model met interactie effecten
+- pca plots van kleinere setjes CELL files: begrijpen wat er met Bas zijn data aan de hand is
+- overlap of previous data with same analysis but with Brainarray annotation
+
+hthgu133pluspmcdf
+HT HG U133+ PM
+
+```{r}
+rm(list=ls())
+options(stringsAsFactors = FALSE )
+source("http://bioconductor.org/biocLite.R")
+
+library(limma)
+library(affy)
+library(vsn)
+library(gdata)
+library( arrayQualityMetrics )
+require(hgu133plus2cdf)
+
+
+require("hgu133plus2.db")
+library("genefilter")
+dir()
+#require("makecdfenv")
+require(annotationTools)
+biocLite("hgu133plus2cdf")
+cellFilePath <- "H:/R_HOME/R_WORK/Bas/CEL files"
+  setwd(cellFilePath) # omdat ReadAffy automatisch alle cell files van working directory inlaadt.
+dir()      
+myData <- ReadAffy(   )
+probeNames(myData)[1:10]
+setwd("H:/R_HOME/R_WORK/Bas/official affy analysis")
+
+
+
+hgu133plus2 array, 
+except for a few extra control probesets, and the fact that they 
+insisted on adding an extra _PM to all the probesets.
+
+ sum(ls(hgu133plus2cdf) %in% gsub("_PM","", ls(hthgu133pluspmcdf)))
+[1] 54675
+ > length(ls(hgu133plus2cdf))
+[1] 54675
+ > length(ls(hthgu133pluspmcdf))
+[1] 54715
+ > ls(hthgu133pluspmcdf)[!gsub("_PM","", ls(hthgu133pluspmcdf)) %in% 
+ls(hgu133plus2cdf)
+ls("hgu133plus2")
+
+So you could either go to the trouble of building and installing a .db 
+package for this array, or you could do something like
+
+head(exprs(eSetrma))
+
+
+
+#annotation_HT_HG_U133_Plus_PM <- read.csv('HT_HG-U133_Plus_PM.na33.annot.csv' ,colClasses= 'character',comment.char='#')
+#make.cdf.package("HT_HG-U133_Plus_PM.CDF", species = "Homo sapiens")
+
+ls(grep('annotationTools',search()))
+
+getGENESYMBOL("207851_PM_s_at", annotation_HT_HG_U133_Plus_PM)
+EGFR_probe_sets <- getPROBESET("1956", annotation_HT_HG_U133_Plus_PM)
+INSR_probe_sets <- getPROBESET("3643", annotation_HT_HG_U133_Plus_PM)
+IGF1R_probe_sets <- getPROBESET("3480", annotation_HT_HG_U133_Plus_PM)
+
+
+#probe set level data
+ind <- rownames(exprs(eSetrma)) %in% unlist(IGF1R_probe_sets)
+sum(ind)
+probeSetIGF1R <- exprs(eSetrma)[ind,]
+require(reshape)
+probeSetIGF1R.l <- melt(probeSetIGF1R)
+head(probeSetINSR.l)
+qplot(x= X2, y= value, data = probeSetIGF1R.l)  + facet_wrap("X1", ncol= 2, scales = "free")+
+   theme( axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5, size = 6)) +ggtitle("Corrected_Sample_Anot_IGF1R_AffyAnot_HT_HG_U133_Plus_PM")
+dev.off()
+
+
+#require("hthgu133pluspm.db")
+#ls("package:hthgu133pluspm.db")
+#ls("package:hthgu133pluspmhsentrezg.db")
+mget( "INSR",hthgu133pluspmALIAS2PROBE)
+
+
+ mget( "INSR",hthgu133pluspmALIAS2PROBE) %in% probeNames(myData) 
+
+ind<-probeNames(myData)=="207851_PM_s_at"
+
+outputINSR <- probes(myData)[ind,]
+
+output <- as.data.frame( exprs(myData)[ind,])
+
+head(output)
+
+
+output$probe <- paste("207851_PM_s_at", rownames(output), sep = "")
+output.l<-melt(output)
+head(output.l)
+
+output.l.s <- output.l[output.l$probe== "3643_at121680",]
+qplot(x= variable, y= value, data = output.l)  + facet_wrap("probe")+
+   theme( axis.text.x = element_text(angle = 90, hjust = 1, size = 6))
+
+sum(probeNames(myData)=="3480_at")
+
+203627_at
+225330_at
+203628_at
+243358_at
+203627_at
+225330_at
+203628_at
+243358_at
+208441_at
+208441_at
+
+ls(grep('annotationTools',search()))
+
+#use Brainarray annotations
+annotation(myData)<-""
+
+myData@cdfName <- "hthgu133pluspmcdf"
+pData(myData)
+# terug naar oude wd:
+#write.table(file = "annotatie bas.csv", myRawPheno, sep = ",", col.names=  NA)
+myRawPheno <- read.delim("H:/R_HOME/R_WORK/Bas/official affy analysis/corrected sample annotation Bas.csv", sep = ',' )
+head(myRawPheno)
+
+
+
+
+# correct some typo's in file and split subjectID string
+PD <- gsub( "inulin", "insulin", myRawPheno[ ,1 ] )
+  PD <- cbind( PD, myRawPheno[ ,2] ) 
+    splitStrings <- strsplit( PD[ ,1 ], "_"  )
+
+myGroup <- gsub( "_[0-9]*$", "", PD[ ,1 ],  )
+if (length( levels(factor( myGroup ) ) ) != 30)
+  {
+  stop("grouping went wrong")
+  }
+myPhenoData <- cbind( myGroup , PD[ , 1 ], myRawPheno[ , 2 ],  do.call("rbind", splitStrings) )
+        colnames( myPhenoData ) <- c( "group", "sampleName", "cellFile", "cell_line", "treatment", "time", "labelID")
+          myPhenoData <-as.data.frame( myPhenoData)
+         class( myPhenoData )
+          myPhenoData$group <- factor(myPhenoData$group)
+          myPhenoData$sampleName <- factor(myPhenoData$sampleName)
+        myPhenoData$cellFile <- factor(myPhenoData$cellFile)
+     myPhenoData$cell_line <- factor(myPhenoData$cell_line)
+   myPhenoData$treatment <- factor(myPhenoData$treatment)
+  myPhenoData$time <- factor(myPhenoData$time)
+myPhenoData$replicate <- factor(myRawPheno$Bio_Rep)
+
+  print(myPhenoData)
+sampleNames(phenoData(myData))
+
+
+
+
+#check if level # is correct:
+  if ( length( levels( myPhenoData$cellFile ) ) != 96 | length( levels( myPhenoData$sampleName ) ) != 96 | 
+          length( levels( myPhenoData$cell_line ) ) != 3 | length( levels( myPhenoData$treatment ) ) != 5 | 
+            length( levels( myPhenoData$time ) ) != 2 ) 
+    {
+    stop( "Incorrect phenoData loaded or phenodata processing error" )
+    }
+
+
+
+
+mt <- match( row.names(pData(myData)), myPhenoData$cellFile)
+
+for(i in 1: length(mt)) {
+  print(mt[i+1] -mt[i])
+}
+
+
+
+
+
+if ( !all(rownames(pData(myData)) == myPhenoData[mt,'cellFile'])){
+  stop(" check ur shit")
+}
+
+cbind(pData(myData),myPhenoData[mt,])
+
+myPhenoData<-myPhenoData[mt,]
+myPhenoData <- lapply(myPhenoData, factor)
+myPhenoData$sampleName
+
+cbind(pData(myData),myPhenoData)
+
+
+pData(myData) <- cbind(pData(myData),myPhenoData)
+
+
+
+sampleNames(phenoData(myData)) <- pData(myData)$sampleName
+sampleNames(protocolData(myData)) <- pData(myData)$sampleName
+sampleNames(assayData(myData)) <- pData(myData)$sampleName
+
+#default rma wrapper: default backgr substr, mod emp bayes
+
+
+
+
+
+eSetrma <- rma( myData )
+ print( pData( eSetrma ) )$group
+
+featureNames(eSetrma) <- gsub("_PM","", featureNames(eSetrma))
+annotation(eSetrma) <- "hgu133plus2.db"
+
+
+
+
+# vsn achtergrond met emp bayes
+
+#vsnData <- vsnrma( myData )
+#meanSdPlot(vsnData)
+
+#quality control report:
+#pData(vsnData)
+intgroup = c(  "treatment", "time","cell_line")
+  getwd()
+
+arrayQualityMetrics(eSetrma, intgroup = intgroup)
+
+
+arrayQualityMetrics( eSetrma ) 
+    #arrayQualityMetrics( vsnData, intgroup = intgroup )
+    
+
+# filter genes at saturation level (for all conditions), background level (for all conditions), or with low variance in all arrays -> can all be done with IQR filtering
+# standard deviation is less robuust than IQR filtering: but it can be expected that for 1 condition (ie 3 arrays of 96) interesting difference could occur. sd will respond more strongly to this small subset of significant fold changes occur within these 3 compared to the rest of the arrays. With a setting of cutoff = 0.5, the probes that belong to the 50% lowest deviations over all arrays are removed. this corresponds to 20k genes. no entreze was found for around 13k probeIDs. 21k duplicate probeIDs could be removed (only with highest are kept) - but chose to keep all multiple probeID's - it could be that higher variance overall arrays does not correlate in all cases with a specific 3 marray set. Also finding multiple probes-sets in de DEG for certain genes will increase confidence that something is happening.
+eSetrmaF <- nsFilter( eSetrma,  var.func = sd, filterByQuantile=TRUE, var.cutoff = 0.3, remove.dupEntrez = TRUE, require.entrez=TRUE )
+
+
+?nsFilter
+
+print( eSetrmaF )
+eSetrmaF <- eSetrmaF$eset
+
+(exprs(eSetrmaF))
+
+allFC <- as.data.frame(matrix(NA, nrow = nrow(exprs(eSetrmaF)), ncol = 1))
+
+ind_IRA_control_1h <- grepl("IRA_control_1h", colnames(exprs(eSetrmaF)))
+head(exprs(eSetrmaF)[, ind_IRA_control_1h])
+ind_IRA_control_6h <- grepl("IRA_control_6h", colnames(exprs(eSetrmaF)))
+head(exprs(eSetrmaF)[, ind_IRA_control_6h])
+ind_IRB_control_1h <- grepl("IRB_control_1h", colnames(exprs(eSetrmaF)))
+head(exprs(eSetrmaF)[, ind_IRB_control_1h])
+ind_IRB_control_6h <- grepl("IRB_control_6h", colnames(exprs(eSetrmaF)))
+head(exprs(eSetrmaF)[, ind_IRB_control_6h])
+ind_IGF1R_control_1h <- grepl("IGF1R_control_1h", colnames(exprs(eSetrmaF)))
+head(exprs(eSetrmaF)[, ind_IGF1R_control_1h])
+ind_IGF1R_control_6h <- grepl("IGF1R_control_6h", colnames(exprs(eSetrmaF)))
+head(exprs(eSetrmaF)[, ind_IGF1R_control_6h])
+
+
+
+controlData<- data.frame(IRA_1h = rowMeans(exprs(eSetrmaF)[, ind_IRA_control_1h  ]   ))
+controlData$IRA_6h <- rowMeans(exprs(eSetrmaF)[, ind_IRA_control_6h  ])
+controlData$IRB_1h <- rowMeans(exprs(eSetrmaF)[, ind_IRB_control_1h  ])
+controlData$IRB_6h <- rowMeans(exprs(eSetrmaF)[, ind_IRB_control_6h  ])
+controlData$IGF1R_1h <- rowMeans(exprs(eSetrmaF)[, ind_IGF1R_control_1h  ])
+controlData$IGF1R_6h <- rowMeans(exprs(eSetrmaF)[, ind_IGF1R_control_6h  ])
+
+head(controlData)
+
+indAllControls <- ind_IRA_control_1h | ind_IRA_control_6h | ind_IRB_control_1h | ind_IRB_control_6h | ind_IGF1R_control_1h | ind_IGF1R_control_6h
+
+allFC <- exprs(eSetrmaF)[, !indAllControls]
+
+gsub("([ab])", "\\1_\\1_", "abc and ABC")
+
+ind_IRA_1h <- grepl("(IRA_[A-Z a-z 0-9]*_1h)", colnames(allFC))
+allFC[ , ind_IRA_1h ] <-  allFC[ , ind_IRA_1h ] / controlData$IRA_1h
+allFC[ , ind_IRA_1h ]<-log2(allFC[ , ind_IRA_1h ])
+ind_IRA_6h <- grepl("(IRA_[A-Z a-z 0-9]*_6h)", colnames(allFC))
+allFC[ , ind_IRA_6h ] <-  allFC[ , ind_IRA_6h ] / controlData$IRA_6h
+allFC[ , ind_IRA_6h ]<-log2(allFC[ , ind_IRA_6h ])
+head(allFC)[,ind_IRA_1h]
+head(allFC)[,ind_IRA_6h]
+
+ind_IRB_1h <- grepl("(IRB_[A-Z a-z 0-9]*_1h)", colnames(allFC))
+allFC[ , ind_IRB_1h ] <-  allFC[ , ind_IRB_1h ] / controlData$IRB_1h
+allFC[ , ind_IRB_1h ]<-log2(allFC[ , ind_IRB_1h ])
+ind_IRB_6h <- grepl("(IRB_[A-Z a-z 0-9]*_6h)", colnames(allFC))
+allFC[ , ind_IRB_6h ] <-  allFC[ , ind_IRB_6h ] / controlData$IRB_6h
+allFC[ , ind_IRB_6h ]<-log2(allFC[ , ind_IRB_6h ])
+head(allFC)[,ind_IRB_1h]
+head(allFC)[,ind_IRB_6h]
+
+
+
+ind_IGF1R_1h <- grepl("(IGF1R_[A-Z a-z 0-9]*_1h)", colnames(allFC))
+allFC[ , ind_IGF1R_1h ] <-  allFC[ , ind_IGF1R_1h ] / controlData$IGF1R_1h
+allFC[ , ind_IGF1R_1h ]<-log2(allFC[ , ind_IGF1R_1h ])
+ind_IGF1R_6h <- grepl("(IGF1R_[A-Z a-z 0-9]*_6h)", colnames(allFC))
+allFC[ , ind_IGF1R_6h ] <-  allFC[ , ind_IGF1R_6h ] / controlData$IGF1R_6h
+allFC[ , ind_IGF1R_6h ]<-log2(allFC[ , ind_IGF1R_6h ])
+head(allFC)[,ind_IGF1R_1h]
+head(allFC)[,ind_IGF1R_6h]
+
+
+
+(apply(allFC, MARGIN = 2, FUN =sd))
+setwd("/home/winks/R_HOME/R_WORK/Bas/official affy analysis/pca")
+write.table(allFC, file = "allFCdec12e.txt", sep = "\t", col.names=NA)
+
+?scale
+head(controlData)
+getwd()
+pdf(file ="boxplot_RF_normData.pdf", height = 10, width = 30)
+boxplot( allFC)
+dev.off()
+?boxplot
+
+
+
+
+vsnDataF <- nsFilter( vsnData,  var.func = sd, filterByQuantile=TRUE, var.cutoff = 0.3, remove.dupEntrez = TRUE, require.entrez= FALSE )
+
+
+print( vsnDataF )
+vsnDataF <- vsnDataF$eset
+
+row.means <- rowMeans(exprs(eSetrmaF))
+filter.threshold <- quantile(row.means, 0.5)
+eSetrmaF <- eSetrmaF[row.means > filter.threshold, ]
+min(rowMeans(exprs(eSetrmaF)))
+dim(eSetrmaF)
+
+rm("myData", "eSetrma", "vsnData")
+
+# quality control for filtered genes
+ arrayQualityMetrics( eSetrmaF, intgroup = intgroup  ) 
+    arrayQualityMetrics( vsnDataF, intgroup = intgroup )
+
+
+# create desing matrix  
+# drie design matrixes gebruiken en resultaten vergelijken waar mogelijk
+
+
+#eSetrmaF <- eSetrma #(for the not filtered for Bas)
+cellLine <- eSetrma$cell_line
+  treatment <- eSetrma$treatment
+    time <- eSetrma$time
+pData(eSetrma)
+allCombos <- paste( cellLine, treatment, time, sep = "."  )
+    allCombos <- factor( allCombos )
+
+# 4 comparisons: Cell line comparisons with receptor specific anctivators and response of... Cell line comparisons with all compounds, cell line comparison with vehicles.
+# all 6 h
+
+designAC <- model.matrix( ~0 + allCombos) # all combo's design matrix
+
+
+colnames(designAC ) <- levels(allCombos)
+
+
+
+
+
+designAC <- model.matrix( ~0 + allCombos) # all combo's design matrix
+     designNI <- model.matrix( ~0 + as.factor(cellLine) + as.factor(treatment) +  as.factor( time )   ) #no interaction design
+          designWI <- model.matrix( ~0 +as.factor(time) + as.factor(cellLine) * as.factor(treatment)    ) #with interaction design
+
+cbind(rownames(pData(eSetrma)),designAC)
+colnames(designAC)
+colnames(designAC )<- levels(allCombos)
+ 
+fitAll_AC <- lmFit( eSetrma, designAC )
+# cell line with activators
+
+contr.matrix <-  makeContrasts( IGF1R_IGF1vsIRB_INS_6h  =  IGF1R.IGF1.6h - IRB.insulin.6h ,
+                                IRA_X10vsIRB_INS_6h     =  IRA.X10.6h    - IRB.insulin.6h  ,
+                                IRA_X10vs_IGF1R_IGF1_6h =  IRA.X10.6h    - IGF1R.IGF1.6h,
+                                IGF1R_IGF1vsIRB_INS_1h  =  IGF1R.IGF1.1h - IRB.insulin.1h,
+                                IRA_X10vsIRB_INS_1h     =  IRA.X10.1h    - IRB.insulin.1h,
+                                IRA_X10vs_IGF1R_IGF1_1h =  IRA.X10.1h    - IGF1R.IGF1.1h,
+                                levels = designAC
+                                )
+
+
+contr.matrix <-  makeContrasts( IGF1RvsIRB_controls_6h  =  IGF1R.control.6h  - IRB.control.6h ,
+                                IRAvsIRB_controls_6h    =  IRA.control.6h    - IRB.control.6h  ,
+                                IRAvsIGF1R_controls_6h  =  IRA.control.6h    - IGF1R.control.6h,
+                                IGF1RvsIRB_controls_1h  =  IGF1R.control.1h  - IRB.control.1h ,
+                                IRAvsIRB_controls_1h    =  IRA.control.1h    - IRB.control.1h  ,
+                                IRAvsIGF1R_controls_1h  =  IRA.control.1h    - IGF1R.control.1h,
+                                levels = designAC
+                                )
+
+
+contr.matrix <-  makeContrasts( respSpec.IGF1R_IGF1vsIRB_INS_6h  =  (IGF1R.IGF1.6h - IGF1R.control.6h) - (IRB.insulin.6h - IRB.control.6h),
+                                respSpec.IRA_X10vsIRB_INS_6h     =  (IRA.X10.6h - IRA.control.6h)      - (IRB.insulin.6h - IRB.control.6h),
+                                respSpec.IRA_X10vs_IGF1R_IGF1_6h =  (IRA.X10.6h - IRA.control.6h)      - (IGF1R.IGF1.6h - IGF1R.control.6h),
+                                respSpec.IGF1R_IGF1vsIRB_INS_1h  =  (IGF1R.IGF1.1h - IGF1R.control.1h) - (IRB.insulin.1h - IRB.control.1h),
+                                respSpec.IRA_X10vsIRB_INS_1h     =  (IRA.X10.1h - IRA.control.1h)      - (IRB.insulin.1h - IRB.control.1h),
+                                respSpec.IRA_X10vs_IGF1R_IGF1_1h =  (IRA.X10.1h - IRA.control.1h)      - (IGF1R.IGF1.1h - IGF1R.control.1h),
+                                levels = designAC
+                                )
+
+
+
+colnames(fitAll_AC)
+
+contr.matrix <-  makeContrasts( all.IGF1RvsIRB_1h  =  (IGF1R.control.1h + IGF1R.glargine.1h + IGF1R.IGF1.1h + IGF1R.insulin.1h + IGF1R.X10.1h)/5 - 
+                                                      (IRB.control.1h   + IRB.glargine.1h   + IRB.IGF1.1h   + IRB.insulin.1h   + IRB.X10.1h)  /5,
+                                all.IRAvsIRB_1h     = (IRA.control.1h   + IRA.glargine.1h   + IRA.IGF1.1h   + IRA.insulin.1h   + IRA.X10.1h)  /5 - 
+                                                      (IRB.control.1h   + IRB.glargine.1h   + IRB.IGF1.1h   + IRB.insulin.1h   + IRB.X10.1h)  /5,
+                                all.IRAvsIGF1R_1h =   (IRA.control.1h   + IRA.glargine.1h   + IRA.IGF1.1h   + IRA.insulin.1h   + IRA.X10.1h)  /5 - 
+                                                      (IGF1R.control.1h + IGF1R.glargine.1h + IGF1R.IGF1.1h + IGF1R.insulin.1h + IGF1R.X10.1h)/5,
+                                
+                                
+                                levels = designAC
+                                )
+
+
+
+
+fitAll_AC1 <- contrasts.fit(fitAll_AC, contr.matrix)
+fitAll_AC1_ <- eBayes(fitAll_AC1)
+
+for( i in seq_along(colnames(fitAll_AC1_)) ){
+  output_AC1 <- topTable(fitAll_AC1_[, colnames(fitAll_AC1_)[i]], adjust.method = "BH", sort = "P", n = Inf)
+  
+  sum(grepl("AFFX",output_AC1$ID))
+  
+  output_AC1 <- output_AC1[ !grepl("AFFX",output_AC1$ID), ]
+  syms <- unlist( mget( output_AC1$ID, env = hgu133plus2SYMBOL ) )
+
+  entrez<-unlist( mget( output_AC1$ID, env = hgu133plus2SYMBOL ) )
+  output_AC1$symbols <- syms
+  output_AC1$entrez <- entrez
+  write.table(output_AC1,file = paste(colnames(fitAll_AC1_)[i], ".txt", sep=''), sep ="\t", col.names=NA)
+
+    }
+
+
+
+
+colnames(designNI)
+    colnames(designNI ) <- c("IGF1R", "IRA", "IRB", "glargine", "IGF1", "insulin", "X10", "h6" )
+          colnames(designWI)
+          colnames(designWI ) <- c("h1", "h6", "IRA", "IRB", "glargine", "")
+
+
+
+
+
+
+
+          
+
+fitAll_NI<- lmFit( vsnDataF, designNI )
+fitAll_WI<- lmFit( vsnDataF, designWI )
+
+
+
+contr.matrix_AC1 <- makeContrasts( glargVScontrol = (IGF1R.glargine.1h +  IGF1R.glargine.6h + IRA.glargine.1h + IRA.glargine.6h + IRB.glargine.1h + IRB.glargine.6h )/6  -  (IGF1R.control.1h + IGF1R.control.6h + IRA.control.1h + IRA.control.6h + IRB.control.1h + IRB.control.6h)/6 , levels = designAC )
+
+  contr.matrix_NI1 <-  makeContrasts( IGF1RvsIRA = IGF1R - IRA,
+                                IGF1RvsIRB = IGF1R - IRB,
+                                IRAvsIRB = IRA - IRB,
+                                glargVScontrol = glargine ,
+                                IGF1vsControl = IGF1 ,
+                                insulinVScontrol = insulin ,
+                                X10vsControl = X10 ,
+                                timeEffect = h6 ,
+                                glargineVSIGF1 = glargine - IGF1,
+                                glargineVSinsulin = glargine - insulin,
+                                glargineVSX10 = glargine - X10,
+                                IGF1vsInsulin = IGF1 - insulin,
+                                IGF1vsX10  = IGF1 - X10,
+                                insulinVSX10 = insulin - X10,
+                                levels = designNI
+                                )
+
+     contr.matrix_WI1 <- makeContrasts( glargVScontrol = , levels = designWI )
+
+
+
+fitAll_AC1 <- contrasts.fit(fitAll_AC, contr.matrix_AC1)
+fitAll_AC1_ <- eBayes(fitAll_AC1)
+colnames(fitAll_AC1_)
+output_AC1 <- topTable(fitAll_AC1_[, "glargVScontrol"], adjust.method = "BH", sort = "P", n = Inf)
+  
+    fitAll_NI1 <- contrasts.fit(fitAll_NI, contr.matrix_NI1)
+    fitAll_NI1_ <- eBayes(fitAll_NI1)
+    colnames(fitAll_NI1_)
+    output_NI1 <- topTable(fitAll_NI1_[, "glargVScontrol"], adjust.method = "BH", sort = "P", n = Inf)
+      
+        fitAll_WI1 <- contrasts.fit(fitAll_WI, contr.matrix_WI1)
+        fitAll_WI1_ <- eBayes(fitAll_WI1)
+        colnames(fitAll_WI1_)
+        output_WI1 <- topTable(fitAll_WI1_[, "glargVScontrol"], adjust.method = "BH", sort = "P", n = Inf)
+
+# check the overlap of top 1k
+length(intersect(rownames(output_AC1)[1:1000], rownames(output_NI1)[1:1000] ))  #928
+length(intersect(rownames(output_AC1)[1:1000], rownames(output_WI1)[1:1000] ))  #545
+
+head(output_NI1)
+head(output_WI1)
+head(output_AC1)
+# write tables for No interaction and all combo models for main effects. Write With interaction table for interaction
+write.table(output_NI1, file = "glargVScontrol_NI1.csv", sep = ",", col.names = NA )
+write.table(output_AC1, file = "glargVScontrol_AC1.csv", sep = ",", col.names = NA )
+
+
+
+# now continue for main effects using the NI model
+colnames(fitAll_NI1_)
+ output_NI1 <- topTable(fitAll_NI1_[, "insulinVSX10"], adjust.method = "BH", sort = "P", n = Inf)
+
+===genorm expressie waarden voor Israël
+
+all.s <- exprs(eSetrma)
+ind.rm <-(grepl("AFFX", rownames(all.s)))
+all.s <- all.s[!ind.rm,]
+
+syms <- unlist(mget(rownames(all.s), env = hgu133plus2SYMBOL))
+
+all.s <- as.data.frame(all.s)
+
+all.s <- cbind(syms, all.s)
+entrezGeneID <- unlist(mget(rownames(all.s), env = hgu133plus2ENTREZID))
+all.s <- cbind(entrezGeneID, all.s)
+
+head(all.s)
+write.table(all.s,"affy_defaul_rma_normalized_expression_data_Bas_ter_Braak.txt", sep = "\t", col.names = NA)
+
+
+dim(all.s)
+head(all.s)
+eeeeeee===
+syms <- unlist( mget( output_NI1$ID, env = hthgu133pluspmSYMBOL ) )
+
+
+output_NI1$syms <- syms
+head(output_NI1)
+write.table(output_NI1, file = "insulinVSX10_NI.csv", sep = ",", col.names = NA )
+
+
+# now for the interaction effects, and compare using all combo's design
+# first time interaction
+colnames(designWI)
+contr.matrix_WI <- makeContrasts( glarg_time, IGF1_time, insulin_time, X10_time , levels = designWI )
+colnames(contr.matrix_WI)
+fitAll_WI1 <- contrasts.fit(fitAll_WI, contr.matrix_WI)
+fitAll_WI_ <- eBayes(fitAll_WI1)
+
+
+#StrainMu:TreatmentS  (Mu.S-Mu.U)-(WT.S-WT.U)
+colnames(fitAll_WI_)
+output_WI <- topTable(fitAll_WI_[, "glarg_time"], adjust.method = "BH", sort = "p", n = Inf)
+syms <- unlist( mget( output_WI$ID, env = hthgu133pluspmSYMBOL ) )
+output_WI$syms <- syms
+head(output_WI)
+write.table(output_WI, file = "glarg_time_WI.csv", sep = ",", col.names = NA )
+
+
+
+
+IRB:glargine -> DIFFERENCE of  "IRB glargine treated vs all IRB not glargine treated"  WITH "not IRB glargine treated vs not IRB not glargine treated"   
+meaning: "cell line specific glargine induced effects"
+skipping this... will do it with all combo design matrix
+
+# now for all the remaining questions: all combo design matrix
+
+# first the specific tests
+colnames(designAC)
+contr.matrix_AC <- makeContrasts( IGF1R_glargVScontrol_1h = IGF1R.glargine.1h-IGF1R.control.1h,
+                               IGF1R_IGF1VScontrol_1h = IGF1R.IGF1.1h-IGF1R.control.1h,
+                               IGF1R_insulinVScontrol_1h = IGF1R.insulin.1h-IGF1R.control.1h,
+                               IGF1R_X10VScontrol_1h = IGF1R.X10.1h-IGF1R.control.1h,
+
+                               IGF1R_glargVScontrol_6h = IGF1R.glargine.6h-IGF1R.control.6h,
+                               IGF1R_IGF1VScontrol_6h = IGF1R.IGF1.6h-IGF1R.control.6h,
+                               IGF1R_insulinVScontrol_6h = IGF1R.insulin.6h-IGF1R.control.6h,  #fout!
+                               IGF1R_X10VScontrol_6h = IGF1R.X10.6h-IGF1R.control.6h,
+                               
+                               IRA_glargVScontrol_1h = IRA.glargine.1h-IRA.control.1h,
+                               IRA_IGF1VScontrol_1h = IRA.IGF1.1h-IRA.control.1h,
+                               IRA_insulinVScontrol_1h = IRA.insulin.1h-IRA.control.1h,
+                               IRA_X10VScontrol_1h = IRA.X10.1h-IRA.control.1h,
+
+                               IRA_glargVScontrol_6h = IRA.glargine.6h-IRA.control.6h,
+                               IRA_IGF1VScontrol_6h = IRA.IGF1.6h-IRA.control.6h,
+                               IRA_insulinVScontrol_6h = IRA.insulin.6h-IRA.control.6h,
+                               IRA_X10VScontrol_6h = IRA.X10.6h-IRA.control.6h,
+                               
+                               IRB_glargVScontrol_1h = IRB.glargine.1h-IRB.control.1h,
+                               IRB_IGF1VScontrol_1h = IRB.IGF1.1h-IRB.control.1h,
+                               IRB_insulinVScontrol_1h = IRB.insulin.1h-IRB.control.1h,
+                               IRB_X10VScontrol_1h = IRB.X10.1h-IRB.control.1h,
+
+                               IRB_glargVScontrol_6h = IRB.glargine.6h-IRB.control.6h,
+                               IRB_IGF1VScontrol_6h = IRB.IGF1.6h-IRB.control.6h,
+                               IRB_insulinVScontrol_6h = IRB.insulin.6h-IRB.control.6h,
+                               IRB_X10VScontrol_6h = IRB.X10.6h-IRB.control.6h,
+                               
+                                                          
+                               levels = designAC )
+
+
+contr.matrix_AC <- makeContrasts( IGF1R_IGF1vsControl = IGF1-control,
+                              
+                               
+                                                          
+                               levels = designAC )
+
+
+
+
+colnames(contr.matrix_AC)
+
+fitAll_AC1 <- contrasts.fit(fitAll_AC, contr.matrix_AC)
+fitAll_AC_ <- eBayes(fitAll_AC1)
+
+
+
+getPROBESET("3480", annotation_HT_HG_U133_Plus_PM)
+
+
+#StrainMu:TreatmentS  (Mu.S-Mu.U)-(WT.S-WT.U)
+(colnames(fitAll_AC_))
+getwd()
+setwd("H:/R_HOME/R_WORK/Bas/official affy analysis/checking error")
+for (i in 1 : length(colnames(fitAll_AC_))) {
+print(i)
+  
+output_AC <- topTable(fitAll_AC_[, colnames(fitAll_AC_)[ i ]], adjust.method = "BH", sort = "p", n = Inf)
+
+syms <- unlist( mget( rownames(output_AC), env = hgu133plus2SYMBOL, ifnotfound=NA ) )
+
+geneID <- unlist( mget( rownames(output_AC), env = hgu133plus2ENTREZID, ifnotfound=NA ) )
+length((geneID))
+
+
+
+
+
+if (nrow(output_AC) != length(syms) ){
+  stop()
+}
+if (nrow(output_AC) != length(geneID) ){
+  stop()
+}
+
+output_AC$syms <- syms
+output_AC$entrez_gi <- geneID
+head(output_AC)
+write.table(output_AC, file = paste(colnames(fitAll_AC_ )[i], "corrected_sampleAnot_NF.csv", sep = ""), sep = ",", col.names = NA ) 
+}
+
+
+
+
+nu overlap berekenen in vergelijking tot vorige analyse
+dan delen van de set in meer detail bekijken
+rm(list=ls())
+name.gather = character()
+output.l=list()
+outputDF.l = list()
+path.to <- "/home/winks/R_HOME/R_WORK/mArray BAC reporter studie/results/DEGs"
+new.data.dirs <-dir("/home/winks/R_HOME/R_WORK/mArray BAC reporter studie/results/DEGs/PHH brainarray")
+old.data.dirs <- dir("/home/winks/R_HOME/R_WORK/mArray BAC reporter studie/results/DEGs/PHH")
+
+for ( j in 1: length(new.data.dirs)){
+
+   new.data.files.A <- dir(paste(path.to, "PHH brainarray", new.data.dirs[j], sep= '/'))
+    old.data.files.A <- dir(paste(path.to, "PHH", old.data.dirs[j], sep ='/'))
+  
+  for (i in 1: length(old.data.files.A)) {
+ new.data.files <-new.data.files.A[i]
+ old.data.files <- old.data.files.A[i]
+   
+
+  
+new.d <- read.delim(paste(path.to , "PHH brainarray", new.data.dirs[j], new.data.files, sep = "/"), sep =',', row.names=1)
+old.d <- read.delim(paste(path.to , "PHH", old.data.dirs[j], old.data.files, sep = "/"), sep =',', row.names=1)
+
+old.n <- max(which(old.d$P.Value <= 0.05, ))
+new.n <- max(which(new.d$P.Value <= 0.05, ))
+
+old.syms <- old.d$symbols[1:old.n]
+new.syms <- new.d$symbols[1:new.n]
+
+inters.n <- length(intersect(old.syms, new.syms))
+percOfLowest <- round(inters.n / (min(old.n, new.n)),digits = 2) 
+
+output.l[[i]] <- c(old.n,new.n,inters.n,percOfLowest)
+
+    
+}
+name.gather <- dir(paste(path.to, "PHH brainarray", new.data.dirs[j], sep= '/'))
+output.df <- do.call('rbind', output.l)
+output.l =list()
+  
+  rownames(output.df) <- gsub("_rma_.csv", "",name.gather)
+colnames(output.df) <- c("sign_old", " sign.new", " sign.both", "percentage of lowest")
+outputDF.l[[j]] <- output.df
+
+
+}
+
+outputDF.final <- do.call('rbind', outputDF.l)
+write.table(outputDF.final, file = "TGP_bioc_vsnrmaVS_BrainArray_rma_comparison.csv", sep ='\t', col.names = NA)
+
+
+#alle AC doen, dan andere biol vragen opstellen, zoals verschil in response van cellijnen tot de compounds: (IRA_insulin_6h - IRA_control_6h) - (IRB_insulin_6h - IRB_control_6h) [12X]  en verschil in compound effect tot cellijnen.. : (IRA_insulin_6h - IRA_control_6h) - (IRA_X10_6h - IRA_control_6h) [24x]
+
+colnames(designAC)
+contr.matrix_AC <- makeContrasts( IGF1R_IRB_glargine_control_1h = (IGF1R.glargine.1h - IGF1R.control.1h ) - (IRB.glargine.1h - IRB.control.1h ),
+                                  IGF1R_IRB_IGF1_control_1h = (IGF1R.IGF1.1h - IGF1R.control.1h ) - (IRB.IGF1.1h - IRB.control.1h ),
+                                  IGF1R_IRB_insulin_control_1h = (IGF1R.insulin.1h - IGF1R.control.1h ) - (IRB.insulin.1h - IRB.control.1h ),
+                                  IGF1R_IRB_X10_control_1h = (IGF1R.X10.1h - IGF1R.control.1h ) - (IRB.X10.1h - IRB.control.1h ),
+                                  
+                                  IGF1R_IRA_glargine_control_1h = (IGF1R.glargine.1h - IGF1R.control.1h ) - (IRA.glargine.1h - IRA.control.1h ),
+                                  IGF1R_IRA_IGF1_control_1h = (IGF1R.IGF1.1h - IGF1R.control.1h ) - (IRA.IGF1.1h - IRA.control.1h ),
+                                  IGF1R_IRA_insulin_control_1h = (IGF1R.insulin.1h - IGF1R.control.1h ) - (IRA.insulin.1h - IRA.control.1h ),
+                                  IGF1R_IRA_X10_control_1h = (IGF1R.X10.1h - IGF1R.control.1h ) - (IRA.X10.1h - IRA.control.1h ),
+                                  
+                                  IRA_IRB_glargine_control_1h = (IRA.glargine.1h - IRA.control.1h ) - (IRB.glargine.1h - IRB.control.1h ),
+                                  IRA_IRB_IGF1_control_1h = (IRA.IGF1.1h - IRA.control.1h ) - (IRB.IGF1.1h - IRB.control.1h ),
+                                  IRA_IRB_insulin_control_1h = (IRA.insulin.1h - IRA.control.1h ) - (IRB.insulin.1h - IRB.control.1h ),
+                                  IRA_IRB_X10_control_1h = (IRA.X10.1h - IRA.control.1h ) - (IRB.X10.1h - IRB.control.1h ),
+                                  
+                                  IGF1R_IRB_glargine_control_6h = (IGF1R.glargine.6h - IGF1R.control.6h ) - (IRB.glargine.6h - IRB.control.6h ),
+                                  IGF1R_IRB_IGF1_control_6h = (IGF1R.IGF1.6h - IGF1R.control.6h ) - (IRB.IGF1.6h - IRB.control.6h ),
+                                  IGF1R_IRB_insulin_control_6h = (IGF1R.insulin.6h - IGF1R.control.6h ) - (IRB.insulin.6h - IRB.control.6h ),
+                                  IGF1R_IRB_X10_control_6h = (IGF1R.X10.6h - IGF1R.control.6h ) - (IRB.X10.6h - IRB.control.6h ),
+                                  
+                                  IGF1R_IRA_glargine_control_6h = (IGF1R.glargine.6h - IGF1R.control.6h ) - (IRA.glargine.6h - IRA.control.6h ),
+                                  IGF1R_IRA_IGF1_control_6h = (IGF1R.IGF1.6h - IGF1R.control.6h ) - (IRA.IGF1.6h - IRA.control.6h ),
+                                  IGF1R_IRA_insulin_control_6h = (IGF1R.insulin.6h - IGF1R.control.6h ) - (IRA.insulin.6h - IRA.control.6h ),
+                                  IGF1R_IRA_X10_control_6h = (IGF1R.X10.6h - IGF1R.control.6h ) - (IRA.X10.6h - IRA.control.6h ),
+                                  
+                                  IRA_IRB_glargine_control_6h = (IRA.glargine.6h - IRA.control.6h ) - (IRB.glargine.6h - IRB.control.6h ),
+                                  IRA_IRB_IGF1_control_6h = (IRA.IGF1.6h - IRA.control.6h ) - (IRB.IGF1.6h - IRB.control.6h ),
+                                  IRA_IRB_insulin_control_6h = (IRA.insulin.6h - IRA.control.6h ) - (IRB.insulin.6h - IRB.control.6h ),
+                                  IRA_IRB_X10_control_6h = (IRA.X10.6h - IRA.control.6h ) - (IRB.X10.6h - IRB.control.6h ),
+                                                          
+                               levels = designAC )
+
+
+colnames(contr.matrix_AC)
+fitAll_AC1 <- contrasts.fit(fitAll_AC, contr.matrix_AC)
+fitAll_AC_ <- eBayes(fitAll_AC1)
+
+
+
+
+#StrainMu:TreatmentS  (Mu.S-Mu.U)-(WT.S-WT.U)
+(colnames(fitAll_AC_))
+
+for (i in 1 : length(colnames(fitAll_AC_))) {
+output_AC <- topTable(fitAll_AC_[, colnames(fitAll_AC_)[ i ]], adjust.method = "BH", sort = "p", n = Inf)
+syms <- unlist( mget( output_AC$ID, env = hthgu133pluspmSYMBOL ) )
+output_AC$syms <- syms
+head(output_AC)
+write.table(output_AC, file = paste(colnames(fitAll_AC_ )[[i]], "_AC.csv", sep = ""), sep = ",", col.names = NA ) 
+}
+
+#verschil in compound effect tot cellijnen.. : (IRA_insulin_6h - IRA_control_6h) - (IRA_X10_6h - IRA_control_6h) [18X]
+# meaning: what difference does insulin and X10 have for IRA?
+colnames(designAC)
+contr.matrix_AC <- makeContrasts( IGF1R_insulin_controlVSX10_control_1h = ( IGF1R.insulin.1h - IGF1R.control.1h ) - ( IGF1R.X10.1h - IGF1R.control.1h  ),
+                                  IGF1R_insulin_controlVSIGF1_control_1h = ( IGF1R.insulin.1h - IGF1R.control.1h ) - ( IGF1R.IGF1.1h - IGF1R.control.1h  ),
+                                  IGF1R_insulin_controlVSglargine_control_1h = ( IGF1R.insulin.1h - IGF1R.control.1h ) - ( IGF1R.glargine.1h - IGF1R.control.1h  ),
+                                  
+                                  IGF1R_X10_controlVSIGF1_control_1h = ( IGF1R.X10.1h - IGF1R.control.1h ) - ( IGF1R.IGF1.1h - IGF1R.control.1h  ),
+                                  IGF1R_X10_controlVSglargine_control_1h = ( IGF1R.X10.1h - IGF1R.control.1h ) - ( IGF1R.glargine.1h - IGF1R.control.1h  ),
+
+                                  IGF1R_glargine_controlVSIGF1_control_1h = ( IGF1R.glargine.1h - IGF1R.control.1h ) - ( IGF1R.IGF1.1h - IGF1R.control.1h  ),
+                                  
+                                  
+                                  IRA_insulin_controlVSX10_control_1h = ( IRA.insulin.1h - IRA.control.1h ) - ( IRA.X10.1h - IRA.control.1h  ),
+                                  IRA_insulin_controlVSIGF1_control_1h = ( IRA.insulin.1h - IRA.control.1h ) - ( IRA.IGF1.1h - IRA.control.1h  ),
+                                  IRA_insulin_controlVSglargine_control_1h = ( IRA.insulin.1h - IRA.control.1h ) - ( IRA.glargine.1h - IRA.control.1h  ),
+                                  
+                                  IRA_X10_controlVSIGF1_control_1h = ( IRA.X10.1h - IRA.control.1h ) - ( IRA.IGF1.1h - IRA.control.1h  ),
+                                  IRA_X10_controlVSglargine_control_1h = ( IRA.X10.1h - IRA.control.1h ) - ( IRA.glargine.1h - IRA.control.1h  ),
+
+                                  IRA_glargine_controlVSIGF1_control_1h = ( IRA.glargine.1h - IRA.control.1h ) - ( IRA.IGF1.1h - IRA.control.1h  ),
+                                  
+                                  
+                                  IRB_insulin_controlVSX10_control_1h = ( IRB.insulin.1h - IRB.control.1h ) - ( IRB.X10.1h - IRB.control.1h  ),
+                                  IRB_insulin_controlVSIGF1_control_1h = ( IRB.insulin.1h - IRB.control.1h ) - ( IRB.IGF1.1h - IRB.control.1h  ),
+                                  IRB_insulin_controlVSglargine_control_1h = ( IRB.insulin.1h - IRB.control.1h ) - ( IRB.glargine.1h - IRB.control.1h  ),
+                                  
+                                  IRB_X10_controlVSIGF1_control_1h = ( IRB.X10.1h - IRB.control.1h ) - ( IRB.IGF1.1h - IRB.control.1h  ),
+                                  IRB_X10_controlVSglargine_control_1h = ( IRB.X10.1h - IRB.control.1h ) - ( IRB.glargine.1h - IRB.control.1h  ),
+
+                                  IRB_glargine_controlVSIGF1_control_1h = ( IRB.glargine.1h - IRB.control.1h ) - ( IRB.IGF1.1h - IRB.control.1h  ),
+                                  
+                                  
+                                  
+                                  
+                                  
+                                  IGF1R_insulin_controlVSX10_control_6h = ( IGF1R.insulin.6h - IGF1R.control.6h ) - ( IGF1R.X10.6h - IGF1R.control.6h  ),
+                                  IGF1R_insulin_controlVSIGF1_control_6h = ( IGF1R.insulin.6h - IGF1R.control.6h ) - ( IGF1R.IGF1.6h - IGF1R.control.6h  ),
+                                  IGF1R_insulin_controlVSglargine_control_6h = ( IGF1R.insulin.6h - IGF1R.control.6h ) - ( IGF1R.glargine.6h - IGF1R.control.6h  ),
+                                  
+                                  IGF1R_X10_controlVSIGF1_control_6h = ( IGF1R.X10.6h - IGF1R.control.6h ) - ( IGF1R.IGF1.6h - IGF1R.control.6h  ),
+                                  IGF1R_X10_controlVSglargine_control_6h = ( IGF1R.X10.6h - IGF1R.control.6h ) - ( IGF1R.glargine.6h - IGF1R.control.6h  ),
+
+                                  IGF1R_glargine_controlVSIGF1_control_6h = ( IGF1R.glargine.6h - IGF1R.control.6h ) - ( IGF1R.IGF1.6h - IGF1R.control.6h  ),
+                                  
+                                  
+                                  IRA_insulin_controlVSX10_control_6h = ( IRA.insulin.6h - IRA.control.6h ) - ( IRA.X10.6h - IRA.control.6h  ),
+                                  IRA_insulin_controlVSIGF1_control_6h = ( IRA.insulin.6h - IRA.control.6h ) - ( IRA.IGF1.6h - IRA.control.6h  ),
+                                  IRA_insulin_controlVSglargine_control_6h = ( IRA.insulin.6h - IRA.control.6h ) - ( IRA.glargine.6h - IRA.control.6h  ),
+                                  
+                                  IRA_X10_controlVSIGF1_control_6h = ( IRA.X10.6h - IRA.control.6h ) - ( IRA.IGF1.6h - IRA.control.6h  ),
+                                  IRA_X10_controlVSglargine_control_6h = ( IRA.X10.6h - IRA.control.6h ) - ( IRA.glargine.6h - IRA.control.6h  ),
+
+                                  IRA_glargine_controlVSIGF1_control_6h = ( IRA.glargine.6h - IRA.control.6h ) - ( IRA.IGF1.6h - IRA.control.6h  ),
+                                  
+                                  
+                                  IRB_insulin_controlVSX10_control_6h = ( IRB.insulin.6h - IRB.control.6h ) - ( IRB.X10.6h - IRB.control.6h  ),
+                                  IRB_insulin_controlVSIGF1_control_6h = ( IRB.insulin.6h - IRB.control.6h ) - ( IRB.IGF1.6h - IRB.control.6h  ),
+                                  IRB_insulin_controlVSglargine_control_6h = ( IRB.insulin.6h - IRB.control.6h ) - ( IRB.glargine.6h - IRB.control.6h  ),
+                                  
+                                  IRB_X10_controlVSIGF1_control_6h = ( IRB.X10.6h - IRB.control.6h ) - ( IRB.IGF1.6h - IRB.control.6h  ),
+                                  IRB_X10_controlVSglargine_control_6h = ( IRB.X10.6h - IRB.control.6h ) - ( IRB.glargine.6h - IRB.control.6h  ),
+
+                                  IRB_glargine_controlVSIGF1_control_6h = ( IRB.glargine.6h - IRB.control.6h ) - ( IRB.IGF1.6h - IRB.control.6h  ),
+                                  
+                                  
+                                  levels = designAC )
+
+
+colnames(contr.matrix_AC)
+fitAll_AC1 <- contrasts.fit(fitAll_AC, contr.matrix_AC)
+fitAll_AC_ <- eBayes(fitAll_AC1)
+
+
+
+
+#StrainMu:TreatmentS  (Mu.S-Mu.U)-(WT.S-WT.U)
+(colnames(fitAll_AC_))
+
+for (i in 1 : length(colnames(fitAll_AC_))) {
+output_AC <- topTable(fitAll_AC_[, colnames(fitAll_AC_)[ i ]], adjust.method = "BH", sort = "p", n = Inf)
+syms <- unlist( mget( output_AC$ID, env = hthgu133pluspmSYMBOL ) )
+output_AC$syms <- syms
+head(output_AC)
+write.table(output_AC, file = paste(colnames(fitAll_AC_ )[[i]], "_AC.csv", sep = ""), sep = ",", col.names = NA ) 
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+     fitAll2 <- contrasts.fit(fitAll_AC, contr.matrix_AC1)
+    fitAll3 <- eBayes(fitAll2)
+
+colnames(fitAll3)
+
+
+output <- topTable(fitAll3[, "glargVScontrol"], adjust.method = "BH", sort = "P", n = Inf)
+dim(output)
+output[1:50,]
+
+fitAll3
+
+dim(output)
+
+output[output$ID=="207851_PM_s_at",]
+
+head(output)
+outputSign <- output[output$P.Val <=0.05,]
+dim(outputSign)
+
+ind <- match( outputSign$ID, names(syms2))
+outputSign$syms <- syms2[ind]
+write.table(outputSign, file = "IGF1RvsIRA.csv", sep = ",", col.names = NA)
+
+
+
+output2 <- topTable(fitAll3[, "glargVScontrol"], adjust.method = "BH", sort = "P", n = Inf)
+dim(output2)
+head(output2)
+outputSign2 <- output2[output2$P.Val <=0.05,]
+dim(outputSign2)
+  
+
+
+syms2 <- unlist( mget( rownames(exprs(vsnDataF) ), env = hthgu133pluspmSYMBOL ) )
+
+
+
+
+
+
+# extract questions (coefficients) of interest with contrast matrix
+# first main effects
+
+# the contrast matrix is used to find the coefficients for the linear combinations of the coefficients that were estimated from the linear model fit.
+
+colnames(design)
+#contr.matrix1: all matched control contrasts
+cont.matrix1 <- makeContrasts( IGFR1_glargVScontrol_1h = IGF1R.glargine.1h-IGF1R.control.1h,
+                               IGFR1_IGF1VScontrol_1h = IGF1R.IGF1.1h-IGF1R.control.1h,
+                               IGFR1_insulinVScontrol_1h = IGF1R.insulin.1h-IGF1R.control.1h,
+                               IGFR1_X10VScontrol_1h = IGF1R.X10.1h-IGF1R.control.1h,
+
+                               IGFR1_glargVScontrol_6h = IGF1R.glargine.6h-IGF1R.control.6h,
+                               IGFR1_IGF1VScontrol_6h = IGF1R.IGF1.6h-IGF1R.control.6h,
+                               IGFR1_insulinVScontrol_6h = IGF1R.insulin.1h-IGF1R.control.6h,
+                               IGFR1_X10VScontrol_6h = IGF1R.X10.6h-IGF1R.control.6h,
+                               
+                               IRA_glargVScontrol_1h = IRA.glargine.1h-IRA.control.1h,
+                               IRA_IGF1VScontrol_1h = IRA.IGF1.1h-IRA.control.1h,
+                               IRA_insulinVScontrol_1h = IRA.insulin.1h-IRA.control.1h,
+                               IRA_X10VScontrol_1h = IRA.X10.1h-IRA.control.1h,
+
+                               IRA_glargVScontrol_6h = IRA.glargine.6h-IRA.control.6h,
+                               IRA_IGF1VScontrol_6h = IRA.IGF1.6h-IRA.control.6h,
+                               IRA_insulinVScontrol_6h = IRA.insulin.6h-IRA.control.6h,
+                               IRA_X10VScontrol_6h = IRA.X10.6h-IRA.control.6h,
+                               
+                               IRB_glargVScontrol_1h = IRB.glargine.1h-IRB.control.1h,
+                               IRB_IGF1VScontrol_1h = IRB.IGF1.1h-IRB.control.1h,
+                               IRB_insulinVScontrol_1h = IRB.insulin.1h-IRB.control.1h,
+                               IRB_X10VScontrol_1h = IRB.X10.1h-IRB.control.1h,
+
+                               IRB_glargVScontrol_6h = IRB.glargine.6h-IRB.control.6h,
+                               IRB_IGF1VScontrol_6h = IRB.IGF1.6h-IRB.control.6h,
+                               IRB_insulinVScontrol_6h = IRB.insulin.6h-IRB.control.6h,
+                               IRB_X10VScontrol_6h = IRB.X10.6h-IRB.control.6h,
+                               
+                                                          
+                               levels = design )
+
+  fitAll2 <- contrasts.fit(fitAll, cont.matrix1)
+    fitAll3 <- eBayes(fitAll2)
+  
+                    IGFR1_glargVScontrol_6h <- topTable(fitAll3 [ ,"IGFR1_glargVScontrol_6h"],  number = 1000, genelist = data.frame(genes = fitAll3$genes, probeIDs =     rownames(fitAll3$genes) ) )
+                    IGFR1_IGF1VScontrol_6h <- topTable(fitAll3 [ ,"IGFR1_IGF1VScontrol_6h"],  number = 1000)
+                    IGFR1_insulinVScontrol_6h <- topTable(fitAll3 [ ,"IGFR1_insulinVScontrol_6h"],  number = 1000)
+                    IGFR1_X10VScontrol_6h <- topTable(fitAll3 [ ,"IGFR1_X10VScontrol_6h"],number = 1000)
+testing <- topTable(fitAll3 [ ,"test"],number = 1000)
+
+IGFR1_glargVScontrol_6hnoI 
+head(IGFR1_glargVScontrol_6h)
+head(IGFR1_IGF1VScontrol_6h)
+length(intersect(IGFR1_glargVScontrol_6ht$ID,IGFR1_glargVScontrol_6h$ID))
+
+dim(IGFR1_glargVScontrol_6h)
+dim(IGFR1_IGF1VScontrol_6h)
+dim(IGFR1_insulinVScontrol_6h)
+dim(IGFR1_X10VScontrol_6h)
+
+head(IGFR1_glargVScontrol_6h)
+head(IGFR1_IGF1VScontrol_6h)
+head(IGFR1_insulinVScontrol_6h)
+head(IGFR1_X10VScontrol_6h)
+
+venn.diagram(
+  x = list(
+    IGFR1_glargVScontrol_6h=IGFR1_glargVScontrol_6h$ID,
+IGFR1_IGF1VScontrol_6h=   IGFR1_IGF1VScontrol_6h$ID,
+IGFR1_insulinVScontrol_6h=   IGFR1_insulinVScontrol_6h$ID,
+IGFR1_X10VScontrol_6h=   IGFR1_X10VScontrol_6h$ID 
+       
+   ),
+    filename = "DEG_IGFR1_vs_controls_6h_Venn.tiff",
+    col = "black",
+    lty = "dotted",
+  lwd = 4,
+  fill =  c("cornflowerblue", "green", "yellow", "darkorchid1"),
+  alpha = 0.50,
+    label.col = c("orange", "white", "darkorchid4", "white", "white", "white", "white", "white", "darkblue", "white", "white", "white", "white", "darkgreen", "white"),
+  cex = 1,
+  fontfamily = "serif",
+	fontface = "bold",
+	cat.col = c("darkblue", "darkgreen", "orange", "darkorchid4"),
+	cat.cex = 0.5,
+	cat.fontfamily = "serif"
+    );
+
+
+
+
+write.table( IGFR1_X10VScontrol_6h, file = " IGFR1_X10VScontrol_6h.csv", sep = ",", col.names = NA)
+
+
+
+
+
+
+
+install.packages("VennDiagram")
+library(VennDiagram)
+
+
+
+?decideTests
+
+# verification by simple matched control t-tests
+IGF1_glarg_6SEL <- eSetrmaF[ , eSetrmaF$group == "IGF1R_glargine_6h" | eSetrmaF$group == "IGF1R_control_6h" ]
+pData( IGF1_glarg_6SEL )
+IGF1_glarg_6SEL$groupInd <- c( 1,2,2,2,1,1,1 )
+tt <- rowttests( IGF1_glarg_6SEL,  "groupInd")
+
+ttSEL<- tt[tt$p.value <0.05,]
+
+topTT <- (tt[order(tt$p.value),  ])
+topTTT <- topTT[topTT$p.value<0.01,]
+
+dim(topTTT)
+# what is the overlap of the t-test with the lin model contrast?
+overlap <- length( intersect( rownames( topTTT), DEG_noI$ID ) ) / ( min(nrow(topTTT), nrow(DEG_noI)  ))
+print( paste( "the number of sign genes for t-test : ", nrow(topTTT)))
+print( paste( "the number of sign genes selected from toptable : ", nrow(DEG_noI)))
+print( paste( "the overlap fraction of the linear model results with a matched control t-test is: ", round(overlap, digits = 2 ) ), sep = "" )
+# conclusion: overlap > 50%
+
+head(topTT)
+dim(DEG_noI)
+
+syms <- unlist( mget( DEG_noI$ID, env = hthgu133pluspmSYMBOL ) )
+DEG_noI$syms <- syms
+DEG_noI$test <- NULL
+?mget
+?order
+?hthgu133pluspm
+ls("package:hthgu133pluspm.db")
+DEG_noI
+
+
+
+# hier proberen specifiek effect van glargine op cell lijn IGF1R op 6h mbv voorbeeld: 8.5 limmaUG: 
+# dataset in 2 stukken scheiden. Dan overlap bekijken met eerdere 3- factorial experiment
+eSetrmaF6h <- eSetrmaF[ ,eSetrmaF$time == "6h"]
+colnames(  pData( eSetrmaF6h ))
+    dim( eSetrmaF6h )
+pData( eSetrmaF6h)
+
+# questions
+#1. which genes respond to stimulation in the specific cell-types,
+#2. which genes respond differently in mutant compared to wild-type cells.
+
+
+TS <- paste( eSetrmaF6h$cell_line, eSetrmaF6h$treatment, sep = "." )
+TS <- factor( TS, levels = c("IRA.insulin", "IRA.control", "IRB.insulin", "IRB.control", "IGF1R.insulin", "IGF1R.control",
+                             "IRA.glargine", "IRB.glargine", "IGF1R.glargine", "IRA.X10", "IRB.X10", "IGF1R.X10", "IRA.IGF1", "IRB.IGF1",
+                             "IGF1R.IGF1") )
+ designTS <- model.matrix( ~0 + TS )
+    colnames( designTS ) <- levels( TS )
+      fitTS <- lmFit( eSetrmaF6h, designTS )
+        cont.matrixTS <- makeContrasts( IGF1_glargVScontrol = IGF1R.glargine-IGF1R.control,
+                                     blah = ( IGF1R.glargine-IGF1R.control ) - ( IGF1R.IGF1-IGF1R.control ),
+                                      levels = designTS)
+          fit2TS <- contrasts.fit(fitTS, cont.matrixTS)
+            fit2TS <- eBayes( fit2TS )
+ 
+twoFactDEG <- topTable( fit2TS[, "diff_IRA_IRB_glarg"], number = 1000 )
+
+length( intersect( twoFactDEG$ID, testing$ID )) # >80% for IGFR1_glargVScontrol_6h, 87 % of 1000 for ( IGF1R.glargine-IGF1R.control ) - ( IGF1R.IGF1-IGF1R.control )
+head(twoFactDEG)[]
+head(DEG_withI)
+ #conclusion: 3 factorial design works well compared to following 2 factorial design from user manual.
+
+
+
+
+
+
+
+
+
+
+
+
+#bellow some manual checking
+
+syms <- unlist( mget( rownames(exprs(vsnDataF) ), env = hthgu133pluspmSYMBOL ) )
+ featureData(eSetrmaF)$syms <- syms 
+
+
+
+
+INSRProbeSets <-  mget("INSR", env = hthgu133pluspmhsentrezgALIAS2PROBE)
+INSRProbeSets<-unlist(INSRProbeSets)
+
+IGF1RProbeSets <-  mget("IGF1R", env = hthgu133pluspmhsentrezgALIAS2PROBE)
+IGF1RProbeSets<-unlist(IGF1RProbeSets)
+
+
+#checking probe level expression of receptors IGF1R and INSR
+bgvsn <- exprs(myData)
+
+
+pns <- probeNames(myData)
+
+
+indices <- split(seq(along = pns), pns)
+head(indices)
+
+Index<-indices[ IGF1RProbeSets ]
+
+unlist(Index)
+IGF1Rexprs <- (bgvsn)[unlist(Index),]
+
+indIRA <- grep("IRA",colnames(IGF1Rexprs))
+indIRB <- grep("IRB",colnames(IGF1Rexprs))
+indIGF <- grep("IGF1R",colnames(IGF1Rexprs))
+
+mean(IGF1Rexprs[,indIGF])
+
+write.table(INSRexprs, file = 'INSR expression values_raw.csv', sep =',', col.names = NA)
+class(exprs(bgvsn))
+matplot( t((bgvsn)[Index[[1]],] ) , pch= "P", log = "y", type = "b", lty = 1, main = 'INSRexprs' , 
+    
+         xlab = "samples",
+         ylab  = expression(log[2]~Intensity),
+          col = 1:9)
+
+
+dev.off()
+
+
+
+source("http://bioconductor.org/biocLite.R")
+biocLite("hthgu133pluspmprobe")
+library(hthgu133pluspmprobe)
+dfSEQ<- as.data.frame(hthgu133pluspmprobe)
+head(dfSEQ)
+dummy<-gsub("_at", "_AT",IGF1RProbeSets)
+
+            ind<-  dfSEQ$Probe.Set.Name %in% gsub( "_s_", "_S_", dummy) 
+sum(ind)
+
+probeSEQ<-dfSEQ[ind,]
+write.table(probeSEQ, file = "INSR_probe_seq.csv", sep =",", col.names=NA)
+
+ls("package:hthgu133pluspm.db")
+
+
+unlist(mget("EGFR", env = hthgu133pluspmALIAS2PROBE ))
+probes<-c( "1565483_PM_at", "1565484_PM_x_at",  "201983_PM_s_at"  ,"201984_PM_s_at" , "210984_PM_x_at"  ,  "211550_PM_at"   , "211551_PM_at"  ,"211607_PM_x_at", "224999_PM_at"      )
+ind1<- rownames(exprs(vsnData))  %in% probes[1]
+ind2<- rownames(exprs(vsnData))  %in% probes[2]
+ind3<- rownames(exprs(vsnData))  %in% probes[3]
+ind4<- rownames(exprs(vsnData))  %in% probes[4]
+ind5<- rownames(exprs(vsnData))  %in% probes[5]
+ind6<- rownames(exprs(vsnData))  %in% probes[6]
+ind7<- rownames(exprs(vsnData))  %in% probes[7]
+ind8<- rownames(exprs(vsnData))  %in% probes[8]
+ind9<- rownames(exprs(vsnData))  %in% probes[9]
+
+cbind(rownames(pData(vsnData) ) ,
+INSR1 <-(exprs( vsnData  )[ind1] )
+INSR2<-(exprs( vsnData  )[ind2] )
+INSR3 <-(exprs( vsnData  )[ind3] )
+INSR4 <-(exprs( vsnData  )[ind4] )
+INSR5 <-(exprs( vsnData  )[ind5] )
+INSR6 <-(exprs( vsnData  )[ind6] )
+      INSR7 <-(exprs( vsnData  )[ind7] )
+      INSR8 <-(exprs( vsnData  )[ind8] )
+      INSR9 <-(exprs( vsnData  )[ind9] )
+      
+      probes
+      
+      
+INSR<- data.frame( probe_1565483_PM_at = INSR1, pobe_1565484_PM_x_at = INSR2, probe_201983_PM_s_at= INSR3, probe_201984_PM_s_at = INSR4,
+                   probe_210984_PM_x_at = INSR5, probe_211550_PM_at = INSR6, probe_211551_PM_at = INSR7, probe_211607_PM_x_at = INSR8, probe_224999_PM_at = INSR9)
+  
+    
+      rownames(INSR)<-rownames(pData(vsnData))
+      head(INSR)
+INSR$Samples<-rownames(INSR)
+    
+INSRm<-melt.data.frame(INSR, id = 10 )
+head(INSRm)
+colnames(INSRm)<-c("Samples", "probeSet", "expression")
+    
+head(INSRm)
+p<-ggplot(INSRm, aes(x = Samples, y = expression))  
+p<-p+ geom_point( aes(color = probeSet, size = 2, shape = probeSet ))    + theme(axis.text.x=element_text(angle=-90)) +labs(title = "EGFR1")
+
+p + geom_smooth(aes(group = probeSet,color = probeSet), span = 0.2, se = F )
+?loess
+      
+      
+colnames(INSRb) <-  c("sample","208991_PM_at", "208992_PM_s_at",   "225289_PM_at",   "243213_PM_at" )
+write.table(INSRb, file = "IGF1R.csv", sep = ",", col.names = NA)
+length(exprs( vsnDataF  )[ind] )
+colnames(INSR)<- c("sample",  "IGF1R log2")
+library(ggplot2)
+INSRm
+      
+INSR<- as.data.frame(INSRb)
+head(INSR)
+
+within(IGF1R, reorder)
+
+probe.243358.PM.at # max var
+?order
+
+ind<- order(as.numeric(IGF1R$probe.243358.PM.at ))
+?rank
+ordered1<-IGF1R$probe.243358.PM.at[ind]
+
+
+pData(vsnData)
+colnames(INSR)<-c("sample", "col1", "col2", "col3","col4")
+INSR<-data.frame(INSR)
+IGF1R$ordered2 <- ordered1
+IGF1R$orderedsample<-IGF1R$probe.sample[ind]
+
+sapply(INSR, "sd")
+INSR$col2<-as.numeric(INSR$col2)
+
+plotje <- ggplot(INSR, aes(sample, col1)) + geom_histogram(stat = "identity") + theme(axis.text.x=element_text(angle=-90))
+max(INSR$col2)
+
+head(INSR)
+head(IGF1R)
+
+modelINSR<-reorder(INSR, as.numeric(INSR[,2]))
+
+max(INSR$probe.207851.PM.s.at)
+
+
+IGF1R$probe.243358.PM.at
+?hist
+namen<-IGF1R$probe.sample[ind]
+
+ordered1
+?qplot
+qplot(samples, data, data = tada, geom = "histogram")
+
+tada<-data.frame(samples = namen, data = ordered1)
+head(tada)
+
+
+head(IGF1R)
+hist(IGF1R$probe.sample,IGF1R$ordered2)
+
+
+head(IGF1R)
+sapply(IGF1R, sd)
+
+colnames(INSR) <-paste("probe",gsub("_", ".", colnames(INSR)), sep = "." )
+
+pData(vsnDataF)
+
+sum(ind)
+?match
+
+
+mget("203627_PM_at", env = hthgu133pluspmSYMBOL )
+
+
+syms <- unlist( mget( rownames(exprs(vsnDataF) ), env = hthgu133pluspmSYMBOL ) )
+ featureData(vsnDataF)$syms <- syms 
+
+sampleNames(protocolData(eSetrma))
+
+a<-exprs(eSetrma)[rownames((exprs(eSetrma)) )=="207851_PM_s_at",]
+
+b<-exprs(vsnDataF [featureData(vsnDataF)$syms=="INSR", ])
+
+class(a)
+class(b)
+
+cbind(as.numeric(a),as.numeric(b))
+
+vsnData
+
+
+(exprs(vsnData[featureData(vsnData)$syms2=="INSR", ] ))
+
+
+
+
+
+
+
+
+
+
+
+
+
+```
+
+
+Een idee voor TGP
+ Om alle sign genen van alle contrasten van interesse te krijgen. daarna goCluster? 
+results <- decideTests(fit2)
+index <- apply(results, 1, any)
+sigchange <- eset[index,]
+

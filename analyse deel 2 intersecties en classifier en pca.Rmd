@@ -1,0 +1,498 @@
+Title
+========================================================
+
+Dec 2013
+I) Classifier genen bepalen - eerst Random Forrests proberen: het gewicht van features voor de bepaling van de classificatie is hier bekend.
+II) Venn diagram groepen gene bepalen gebruikmakend van DEG uit abs(log2FC) >= 1, AveExpr >=6, corr p value <= 0.05 
+    - groep 1:met IRB intersectie insulin, glargine, X10
+    - groep 2: met IRA & IGF1R intersectie glargine, X10, IGF1
+    - groep 3: met IRA & IGF1R intersectie X10, IGF1
+    - groep 4: met IRA & IGF1R intersectie glargine, X10
+    
+III) linear model met contrasten mitogenic vs metabolic en compound (als Bas dit nog wil)
+IV) PCA met cell lijn, tijd en compound -- ggplot2 eerst maar eens proberen
+
+```{r}
+library(org.Hs.eg.db)
+# ii)
+
+rm(list=ls())
+#group 1 met IRB intersectie insulin, glargine, X10, niet met IGF1
+path.files <- "DEG selection from DEG results corrected sample annotations"
+IRB.paths <-paste(path.files, dir(path.files)[grepl("IRB", dir(path.files))], sep ="/")
+
+IRB.list =list()
+
+for (i in seq_along(IRB.paths)){
+  IRB.list[[i]] <- read.delim(file = IRB.paths[i], sep ="\t", row.names = NULL)
+  
+}
+
+IRB_glargVScontrol_1h <- IRB.list[[1]]$entrez_gi
+IRB_glargVScontrol_6h <- IRB.list[[2]]$entrez_gi
+IRB_IGF1VScontrol_1h  <- IRB.list[[3]]$entrez_gi
+IRB_IGF1VScontrol_6h  <- IRB.list[[4]]$entrez_gi
+IRB_insulinVScontrol_1h <- IRB.list[[5]]$entrez_gi
+IRB_insulinVScontrol_6h <- IRB.list[[6]]$entrez_gi
+IRB_X10VScontrol_1h  <-  IRB.list[[7]]$entrez_gi
+IRB_X10VScontrol_6h  <-  IRB.list[[8]]$entrez_gi
+
+IRB_insulin_glargine<- intersect(c(IRB_glargVScontrol_1h, IRB_glargVScontrol_6h), c(IRB_insulinVScontrol_1h, IRB_insulinVScontrol_6h))
+IRB_insulin_glargine_X10<- intersect(IRB_insulin_glargine, c(IRB_X10VScontrol_1h, IRB_X10VScontrol_6h))
+
+butNot <- intersect(IRB_insulin_glargine_X10, c(IRB_IGF1VScontrol_1h,IRB_IGF1VScontrol_6h))
+IRB_insulin_glargine_X10 <- IRB_insulin_glargine_X10[ !IRB_insulin_glargine_X10 %in% butNot]
+
+# group 2, 3 and 4
+path.files <- "DEG selection from DEG results corrected sample annotations"
+IRA_IGF1R.paths <-paste(path.files, dir(path.files)[!grepl("IRB", dir(path.files))], sep ="/")
+
+IRA_IGF1R.list =list()
+
+for (i in seq_along(IRA_IGF1R.paths)){
+  IRA_IGF1R.list[[i]] <- read.delim(file = IRA_IGF1R.paths[i], sep ="\t", row.names = NULL)
+}
+
+IRA_glargVScontrol <- c(IRA_IGF1R.list[[9]]$entrez_gi,IRA_IGF1R.list[[10]]$entrez_gi)
+IRA_IGF1VScontrol <- c(IRA_IGF1R.list[[11]]$entrez_gi,IRA_IGF1R.list[[12]]$entrez_gi)
+IRA_insulinVScontrol  <- c(IRA_IGF1R.list[[13]]$entrez_gi, IRA_IGF1R.list[[14]]$entrez_gi)
+IRA_X10VScontrol  <- c(IRA_IGF1R.list[[15]]$entrez_gi,IRA_IGF1R.list[[16]]$entrez_gi)
+IGF1R_glargVScontrol <- c(IRA_IGF1R.list[[1]]$entrez_gi,IRA_IGF1R.list[[2]]$entrez_gi)
+IGF1R_IGF1VScontrol <- c(IRA_IGF1R.list[[3]]$entrez_gi,IRA_IGF1R.list[[4]]$entrez_gi)
+IGF1R_insulinVScontrol  <- c(IRA_IGF1R.list[[5]]$entrez_gi, IRA_IGF1R.list[[6]]$entrez_gi)
+IGF1R_X10VScontrol  <- c(IRA_IGF1R.list[[7]]$entrez_gi,IRA_IGF1R.list[[8]]$entrez_gi)
+
+
+#gr 2 glargine, X10, IGF1
+IRA_IGF1R_IGF1_glargine<- intersect(c(IRA_glargVScontrol,IGF1R_glargVScontrol) , c(IRA_IGF1VScontrol,IGF1R_IGF1VScontrol) )
+IRA_IGF1R_IGF1_glargine_X10<- intersect(IRA_IGF1R_IGF1_glargine, c(IRA_X10VScontrol, IGF1R_X10VScontrol))
+butNot <- intersect(IRA_IGF1R_IGF1_glargine_X10, c(IRA_insulinVScontrol, IGF1R_insulinVScontrol))
+IRA_IGF1R_IGF1_glargine_X10 <- IRA_IGF1R_IGF1_glargine_X10[ !IRA_IGF1R_IGF1_glargine_X10 %in% butNot]
+
+# groep 3 met IRA & IGF1R intersectie X10, IGF1 - not insulin & glargine
+IRA_IGF1R_X10_IGF1 <- intersect(c(IRA_IGF1VScontrol, IGF1R_IGF1VScontrol),  c(IRA_X10VScontrol, IGF1R_X10VScontrol ) )
+butNot <- intersect(IRA_IGF1R_X10_IGF1, c(IRA_insulinVScontrol, IGF1R_insulinVScontrol, IRA_glargVScontrol, IGF1R_glargVScontrol))
+IRA_IGF1R_X10_IGF1 <- IRA_IGF1R_X10_IGF1[ !IRA_IGF1R_X10_IGF1 %in% butNot]
+
+
+# groep 4: met IRA & IGF1R intersectie glargine, X10 - not insulin & IGF1
+IRA_IGF1R_X10_glargine <- intersect(c(IRA_X10VScontrol, IGF1R_X10VScontrol), c(IRA_glargVScontrol, IGF1R_glargVScontrol) )
+butNot <- intersect(IRA_IGF1R_X10_glargine, c(IRA_IGF1VScontrol, IGF1R_IGF1VScontrol, IRA_insulinVScontrol, IGF1R_insulinVScontrol))
+IRA_IGF1R_X10_glargine <- IRA_IGF1R_X10_glargine[ !IRA_IGF1R_X10_glargine %in% butNot]
+
+
+
+# check if no overlap groups
+intersect(IRB_insulin_glargine_X10, IRA_IGF1R_IGF1_glargine_X10)
+intersect(IRB_insulin_glargine_X10, IRA_IGF1R_X10_IGF1)
+intersect(IRB_insulin_glargine_X10, IRA_IGF1R_X10_glargine)
+
+intersect(IRA_IGF1R_IGF1_glargine_X10, IRA_IGF1R_X10_IGF1)
+intersect(IRA_IGF1R_IGF1_glargine_X10, IRA_IGF1R_X10_glargine)
+intersect(IRA_IGF1R_X10_IGF1, IRA_IGF1R_X10_glargine)
+
+# add symbols and descriptors
+IRB_insulin_glargine_X10 <- unlist(mget(as.character(IRB_insulin_glargine_X10), org.Hs.egSYMBOL, ifnotfound=NA))
+IRA_IGF1R_IGF1_glargine_X10 <- unlist(mget(as.character(IRA_IGF1R_IGF1_glargine_X10), org.Hs.egSYMBOL, ifnotfound=NA))
+IRA_IGF1R_X10_IGF1 <- unlist(mget(as.character(IRA_IGF1R_X10_IGF1), org.Hs.egSYMBOL, ifnotfound=NA))
+IRA_IGF1R_X10_glargine <- unlist(mget(as.character(IRA_IGF1R_X10_glargine), org.Hs.egSYMBOL, ifnotfound=NA))
+
+
+
+write.table(IRB_insulin_glargine_X10, file = "overlap/IRB_insulin_glargine_X10.txt", sep ="\t")
+write.table(IRA_IGF1R_IGF1_glargine_X10, file = "overlap/IRA_IGF1R_IGF1_glargine_X10.txt", sep ="\t")
+write.table(IRA_IGF1R_X10_IGF1, file = "overlap/IRA_IGF1R_X10_IGF1.txt", sep ="\t")
+write.table(IRA_IGF1R_X10_glargine, file = "overlap/IRA_IGF1R_X10_glargine.txt", sep ="\t")
+
+library(VennDiagram)
+
+
+IRB_glargVScontrol_1h <- IRB.list[[1]]$entrez_gi
+IRB_glargVScontrol_6h <- IRB.list[[2]]$entrez_gi
+IRB_IGF1VScontrol_1h  <- IRB.list[[3]]$entrez_gi
+IRB_IGF1VScontrol_6h  <- IRB.list[[4]]$entrez_gi
+IRB_insulinVScontrol_1h <- IRB.list[[5]]$entrez_gi
+IRB_insulinVScontrol_6h <- IRB.list[[6]]$entrez_gi
+IRB_X10VScontrol_1h  <-  IRB.list[[7]]$entrez_gi
+IRB_X10VScontrol_6h  <-  IRB.list[[8]]$entrez_gi
+
+IRA_glargVScontrol <- c(IRA_IGF1R.list[[9]]$entrez_gi,IRA_IGF1R.list[[10]]$entrez_gi)
+IRA_IGF1VScontrol <- c(IRA_IGF1R.list[[11]]$entrez_gi,IRA_IGF1R.list[[12]]$entrez_gi)
+IRA_insulinVScontrol  <- c(IRA_IGF1R.list[[13]]$entrez_gi, IRA_IGF1R.list[[14]]$entrez_gi)
+IRA_X10VScontrol  <- c(IRA_IGF1R.list[[15]]$entrez_gi,IRA_IGF1R.list[[16]]$entrez_gi)
+IGF1R_glargVScontrol <- c(IRA_IGF1R.list[[1]]$entrez_gi,IRA_IGF1R.list[[2]]$entrez_gi)
+IGF1R_IGF1VScontrol <- c(IRA_IGF1R.list[[3]]$entrez_gi,IRA_IGF1R.list[[4]]$entrez_gi)
+IGF1R_insulinVScontrol  <- c(IRA_IGF1R.list[[5]]$entrez_gi, IRA_IGF1R.list[[6]]$entrez_gi)
+IGF1R_X10VScontrol  <- c(IRA_IGF1R.list[[7]]$entrez_gi,IRA_IGF1R.list[[8]]$entrez_gi)
+
+# define groups
+IRB_insulin <- c(IRB_insulinVScontrol_1h,IRB_insulinVScontrol_6h)
+IRB_glarg  <- c(IRB_glargVScontrol_1h, IRB_glargVScontrol_6h)
+IRB_IGF1 <- c(IRB_IGF1VScontrol_1h, IRB_IGF1VScontrol_6h)
+IRB_X10 <- c(IRB_X10VScontrol_1h, IRB_X10VScontrol_6h)
+
+IRA_IGF1R_glarg <- c(IRA_glargVScontrol,IGF1R_glargVScontrol)
+IRA_IGF1R_IGF1 <- c(IRA_IGF1VScontrol,IGF1R_IGF1VScontrol)
+IRA_IGF1R_X10 <- c(IRA_X10VScontrol, IGF1R_X10VScontrol)
+IRA_IGF1R_insulin <- c(IRA_insulinVScontrol, IGF1R_insulinVScontrol )
+
+
+venn.diagram(
+  
+  x = list(
+    IRB_insulin=IRB_insulin,
+IRB_glarg=   IRB_glarg,
+IRB_IGF1=   IRB_IGF1,
+IRB_X10=   IRB_X10 
+       
+   ),
+    filename = "Venn_IRB.tiff",
+    col = "black",
+    lty = "dotted",
+  lwd = 4,
+  fill =  c("cornflowerblue", "green", "yellow", "darkorchid1"),
+  alpha = 0.50,
+    label.col = c("orange", "white", "darkorchid4", "white", "white", "white", "white", "white", "darkblue", "white", "white", "white", "white", "darkgreen", "white"),
+  cex = 1,
+  fontfamily = "serif",
+  fontface = "bold",
+	cat.col = c("darkblue", "darkgreen", "orange", "darkorchid4"),
+	cat.cex = 1,
+	cat.fontfamily = "serif"
+    );
+
+
+
+
+rm(list=ls())
+setwd("/home/winks/R_HOME/R_WORK/Bas/official affy analysis")
+file.path <-"DEG results corrected sample annotation - all genes"
+dir(file.path)
+
+my.list = list()
+for (i in seq_along(dir(file.path))){
+  my.list[[i]] <- read.delim(file = paste(file.path, dir(file.path)[i], sep ="/"), sep =",", row.names = 1)
+}
+
+lapply(my.list, nrow)
+myDF<-as.data.frame(matrix(NA, nrow = 13934, ncol = 24))
+rownames(myDF) <- my.list[[1]]$entrez_gi
+for ( i in seq_along(my.list)) {
+  ind<- match( rownames(myDF), my.list[[i]]$entrez_gi)
+  myDF[, i] <- my.list[[i]]$logFC[ind]
+  }
+colnames(myDF) <- gsub("corrected_sampleAnot.csv","", dir(file.path))
+
+# - groep 1:met IRB intersectie insulin, glargine, X10  METABOLIC
+#     - groep 2: met IRA & IGF1R intersectie glargine, X10, IGF1
+#     - groep 3: met IRA & IGF1R intersectie X10, IGF1
+#     - groep 4: met IRA & IGF1R intersectie glargine, X10
+    colnames(allFC)
+head(myDF)
+test <-prcomp(2^exprs(eSetrma), retx = T, center = T, scale = TRUE)
+?prcomp
+plot(test$rotation)  
+
+
+
+
+head(exprs(eSetrma))
+test <-pca(as.matrix(exprs(eSetrma)), env = arrayQualityMetrics)
+
+ old.seed = setRNG(kind = "default", seed = 28051968, normal.kind = "default")
+    on.exit(setRNG(old.seed))
+intgroup <-c(  "treatment", "time","cell_line")
+ x = prepdata(eSetrma, intgroup = intgroup, do.logtransform = FALSE)
+head(x$A)
+test<- prcomp(t(x$A))
+
+plot(test$x[,1], test$x[,2])
+
+pca = prcomp(t(na.omit(x$M)))
+head(pca$x)
+plot(pca$x[,1], pca$x[,2] )
+write.table(file = "pca_arrayQ_reproduced_allExpressionValues.csv", pca$x, sep =",", col.names = NA)
+plot(as.data.frame(pca$x))
+
+
+plot(pca$rotation)
+getwd()
+head(test$rotation)
+setwd("/home/winks/R_HOME/R_WORK/Bas/official affy analysis/pca")
+write.table( file = "sd_all.txt", test$sdev, col.names = NA, sep ="\t")
+write.table( file = "rotation_all.txt", test$rotation, col.names = NA, sep = "\t")
+write.table( file = "scores_all.txt", test$x, col.names = NA, sep ="\t")
+  biplot(test)
+vignette("arrayQualityMetrics")
+plot(test$rotation)
+sd <- mydata.pca$sdev
+> loadings <- mydata.pca$rotation
+> rownames(loadings) <- colnames(mydata)
+> scores <- mydata.pca$x)
+arrayQualityMetrics
+class(test)
+class(loadings(test))
+hmm <-print(test, cutoff=0)
+print(test)
+plot(test['loadings'])
+biplot(test, col=c("white", "blue"))
+?biplot
+attributes(test, col =c("red"))
+plot(test)
+ biplot(test)
+test$rotation
+
+
+
+allFC.dd <- read.delim(file = "/home/winks/R_HOME/R_WORK/Bas/official affy analysis/pca/allFCdec12e.txt", sep = "\t", row.names=1)
+
+
+# Hier de regressie / classificatie
+# F-ratio of between to within groups sums of squares
+#use rma norm data, convert back to non log transformed
+#classi.d <- exprs(eSetrma) #data for classification
+
+
+
+# now too preselect ~ 200 genes based on F ratio
+# first need to label samples
+
+allFC.d <- allFC.dd # FC after filter (see mArray_Bas_heranalyse.Rmd)
+
+ind6 <- grepl( "_6h_",  colnames(allFC.d))
+ind1 <- !ind6
+dim(allFC.d)
+allFC.d <- allFC.d[ , ind1]
+
+#first for 6h data
+selind <- non_mitogenic_ind + mitogenic_ind
+
+allFC.d <- allFC.d[, as.logical(selind)]
+
+#deze index was voor 1e met raw expressiewaarden
+non_mitogenic_ind <- grepl("IRB_insulin", colnames(allFC.d)) | grepl("IRB_glarg", colnames(allFC.d)) | grepl("IRB_X10", colnames(allFC.d)) 
+
+mitogenic_ind <- as.logical(grepl("IRA_glarg", colnames(allFC.d)) + grepl("IRA_X10", colnames(allFC.d)) + grepl("IRA_IGF1", colnames(allFC.d)) +
+                      grepl("IGF1R_glarg", colnames(allFC.d)) + grepl("IGF1R_X10", colnames(allFC.d)) + grepl("IGF1R_IGF1", colnames(allFC.d)))
+
+sum(c(mitogenic_ind, non_mitogenic_ind))
+ind <- rep(NA, 27)
+ind[non_mitogenic_ind == TRUE] <- "nonMitogenic"
+ind[mitogenic_ind == TRUE] <- "Mitogenic"
+
+cbind(ind,t(allFC.d)[,1])
+head(allFC.d)
+
+kut <- rowttests(as.matrix(allFC.d), fac = as.factor(ind))['p.value']
+ABSmeansRows <- rowMeans(abs(as.matrix(allFC.d[, !colnames(allFC.d) %in%"p.value"])))
+diffMeans <- rowMeans(as.matrix(allFC.d[, non_mitogenic_ind])) - rowMeans(as.matrix(allFC.d[, mitogenic_ind]))
+allFC.d <- cbind(allFC.d, kut)
+allFC.d <- cbind(allFC.d, ABSmeansRows)
+allFC.d <- cbind(allFC.d, diffMeans)
+
+head(allFC.d)
+allFC.d <- as.data.frame(allFC.d)
+allFC.d <- allFC.d[rev(order(abs(allFC.d$diffMeans))), ]
+head(allFC.d)
+dim(allFC.d)
+allFC.d <- allFC.d[allFC.d$p.value < 0.01, ]
+
+allFC.d <- allFC.d[1:100, ] # top 200
+setwd("/home/winks/R_HOME/R_WORK/Bas/official affy analysis/pca/machine learning/FC/new selection method")
+getwd()
+write.table(allFC.d, file = "one hour 100 genes selected gene set for ML.txt", sep ="\t", col.names = NA)
+
+getwd()
+tail(allFC.d)
+
+
+
+allFC.d$p.value <- NULL
+allFC.d$ABSmeansRows <- NULL
+allFC.d$diffMeans <- NULL
+head(allFC.d)
+sel.set<- t(allFC.d) # samples as rows, genes as columns
+head(sel.set) 
+groupings<- ind
+cbind(ind, sel.set[, 1])
+
+groupings[groupings == "nonMitogenic"] <- -1
+groupings[groupings == "Mitogenic"] <- 1
+groupings <- as.numeric(as.numeric(groupings))
+
+
+library(bootfs)
+
+
+
+
+set.seed(1234)
+data <- simDataSet(nsam=30, ngen=100, sigma=1.5, plot=TRUE)
+
+
+
+data$logX <- sel.set
+data$groupings$grx <- groupings
+
+logX <- data$logX
+groupings <- data$groupings
+## run the crossvalidation
+## note the number of repeats should be set to 10 or so,
+## it is set to 2 here to have a low running time of this illustration
+## create a parameter object used for the different methods
+# for crossvalidation
+paramsCV <- control_params(seed=123, ncv=5, repeats=10, jitter=FALSE, ## general parameters
+maxiter=100, maxevals=50, ## svm parameters
+max_allowed_feat=500, n.threshold=50, ## pamr parameters
+maxRuns=300,  ## RF parameters
+ntree = 1000, ## GBM parameters
+shrinkage = 0.01, interaction.depth = 3,
+bag.fraction = 0.75, train.fraction = 0.75,
+n.minobsinnode = 3, n.cores = 1,
+verbose = TRUE)
+## run the crossvalidation
+## takes a while
+methods <- c("pamr", "scad", "rf_boruta")
+retCV <- doCV(logX, groupings, fs.methods = methods, DIR = "/home/winks/R_HOME/R_WORK/Bas/official affy analysis/pca/machine learning/FC", params=paramsCV)
+
+head(logX)[,490:500]
+
+
+
+paramsBS <- control_params(seed=123,
+ jitter=FALSE, bstr=15,
+ maxiter=100, maxevals=50, bounds=NULL,
+ max_allowed_feat=500, n.threshold=50,
+ maxRuns=300,
+ntree = 1000,
+shrinkage = 0.01, interaction.depth = 3,
+bag.fraction = 0.75, train.fraction = 0.75,
+n.minobsinnode = 3, n.cores = 1,
+verbose = TRUE, saveres=FALSE
+)
+
+methods <- c("pamr", "scad", "rf_boruta")
+retBS <- doBS(logX, groupings, fs.methods=methods, DIR="bs", params=paramsBS)
+
+#how an importance ranking for a single
+ ## classification method
+ bsres <- makeIG(retBS[[1]], SUBDIR=NULL, prob=.9)
+(bsres$allsignatures)
+names(bsres)
+(bsres$filter)
+res <- resultBS(retBS, DIR=NULL, vlabel.cex = 3, filter = 3)
+res$grx$tophits
+
+write.table(res$grx$tophits, file = "topHits_1h.txt", sep ="\t", col.names = T)
+write.table(unlist(ENTREZID), file = "topHitsSYMB_1h.txt", sep ="\t", col.names = T)
+library("hthgu133pluspm.db")
+
+  ENTREZID <- mget(as.character( res$grx$tophits[,1] ),  hthgu133pluspmSYMBOL, ifnotfound = NA)
+ENTREZID <- unlist(ENTREZID)
+write.table(file = "hits mito vs non mito vanuit expressie waarden inclusief controles -symbols.txt", sep ="\t", ENTREZID)
+ls("hthgu133pluspm")
+
+ENTREZID <- unlist(ENTREZID)
+# run the crossvalidation
+## note the number of repeats should be set to 10 or so,
+## it is set to 2 here to have a low running time of this illustration
+## create a parameter object used for the different methods
+# for crossvalidation
+
+
+head(logX)
+lda
+vb:
+  library(MASS)
+Iris <- data.frame(rbind(iris3[,,1], iris3[,,2], iris3[,,3]),
+                   Sp = rep(c("s","c","v"), rep(50,3)))
+#data after feature selection
+logX
+
+afterFS <- logX[,colnames(logX) %in% res$grx$tophits[1:9,1]]
+
+
+dim(afterFS)
+# groupings:
+non_mitogenic_ind <- grepl("IRB_insulin", rownames(afterFS)) | grepl("IRB_glarg", rownames(afterFS)) | grepl("IRB_X10", rownames(afterFS)) |
+                                                                                                                 grepl("control", rownames(afterFS))
+
+mitogenic_ind <- as.logical(grepl("IRA_glarg", rownames(afterFS)) + grepl("IRA_X10", rownames(afterFS)) + grepl("IRA_IGF1", rownames(afterFS)) +
+                      grepl("IGF1R_glarg", rownames(afterFS)) + grepl("IGF1R_X10", rownames(afterFS)) + grepl("IGF1R_IGF1", rownames(afterFS)))
+
+
+afterFS <- as.data.frame(afterFS)
+afterFS$group[non_mitogenic_ind] <- "nonMito" 
+afterFS$group[mitogenic_ind] <- "Mito" 
+afterFS$means <- NULL
+afterFS$group
+
+
+dim(afterFS)
+
+train <- sample(1:27, 27/2)
+
+table(afterFS$group[train])
+table(Iris$Sp[train])
+## your answer may differ
+##  c  s  v
+## 22 23 30
+dim(afterFS)
+z <- lda(group ~ ., afterFS, prior = c(1,1)/2, subset = train)
+?lda
+cbind(afterFS$group, predict(z, afterFS[-train,   ])$class)
+
+predict(z)
+class(z)
+dim(afterFS)
+
+##  [1] s s s s s s s s s s s s s s s s s s s s s s s s s s s c c c
+## [31] c c c c c c c v c c c c v c c c c c c c c c c c c v v v v v
+## [61] v v v v v v v v v v v v v v v
+(z1 <- update(z, . ~ . - nonMito))
+library(ggplot2)
+
+head(afterFS)
+write.table(afterFS, file = "selected_featureFC_1hrs.txt", sep ="\t", col.names = NA)
+plot(z)
+
+
+
+# for vizualizing CV: 
+
+attributes(z)
+
+
+pca = prcomp(afterFS[, colnames(afterFS) !="group"])
+head(pca$x)
+plot(pca$x[,1], pca$x[,2], color = as.factor(afterFS$group ))
+
+write.table(file = "pca_arrayQ_reproduced_allExpressionValues.csv", pca$x, sep =",", col.names = NA)
+plot(as.data.frame(pca$x))
+forPCA <- data.frame(comp1 = pca$x[,1], comp2 = pca$x[,2], group = afterFS$group)
+
+require(ggplot2)
+ggplot(data = forPCA, aes(x=comp1, y=comp2, colour = group)) + geom_point()
+
+plot(pca$rotation)
+getwd()
+
+
+
+
+
+
+
+
+labels<-as.data.frame(dir(file.path))
+labels$label <- c("mito", "mito", "mito", "mito", "NA", "NA", "mito", "mito", "mito", "mito",
+  "mito", "mito", "NA", "NA", "mito", "mito", "meta", "meta", "NA", "NA", 
+   "meta", "meta", "meta", "meta")
+write.table(labels, file = "samples.csv", sep ="\t")
+head(allFC)
+labels <- read.table(file = "samples.csv", sep = "\t", header = T)
+head(labels)
+
+
+```
+

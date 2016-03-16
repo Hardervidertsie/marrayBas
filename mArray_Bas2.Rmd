@@ -1,0 +1,174 @@
+micro array analyse Bas ter Braak
+========================================================
+
+
+* Strategy:
+ * vsn2 background correction ( variance stabilization at lower expression levels ) and the default rma background method
+ * empirical Bayes moderation met LIMMA ( increase variance estimation by calculating variance of probe sets over all samples )
+ * wrappers used are: rma & vsnrma
+ * quality control with bioc package arraQualityMetrics
+
+* Om packages te installeren (eenmalig):
+ * source("http://bioconductor.org/biocLite.R")
+ * biocLite("package_name")
+* Om package te laden (moet elke nieuwe R sessie)
+ * library(package_name)
+ * open hulp doc van package:
+  * vignette(package_name )
+
+```{r}
+options(stringsAsFactors = FALSE )
+library(limma)
+library(affy)
+library(vsn)
+library(gdata)
+library( arrayQualityMetrics )
+library("hthgu133pluspm.db")
+library("genefilter")
+rm(list=ls())
+limmaUsersGuide()
+cellFilePath <- "/home/winks/R_HOME/R_WORK/Bas/CEL files"
+  setwd(cellFilePath) # omdat ReadAffy automatisch alle cell files van working directory inlaadt.
+      myData <- ReadAffy(   )
+       
+# terug naar oude wd:
+    setwd( "/home/winks/R_HOME/R_WORK/Bas"  )
+
+
+myRawPheno <- read.xls("Simple_ToxTemplate_BasterBraak.xls")
+# correct some typo's in file and split subjectID string
+PD <- gsub( "inulin", "insulin", myRawPheno[ ,1 ] )
+  PD <- cbind( PD, myRawPheno[ ,2] ) 
+    splitStrings <- strsplit( PD[ ,1 ], "_"  )
+
+myGroup <- gsub( "_[0-9]*$", "", PD[ ,1 ],  )
+if (length( levels(factor( myGroup ) ) ) != 30)
+  {
+  stop("grouping went wrong")
+  }
+myPhenoData <- cbind( myGroup , PD[ , 1 ], myRawPheno[ , 2 ],  do.call("rbind", splitStrings) )
+        colnames( myPhenoData ) <- c( "group", "sampleName", "cellFile", "cell_line", "treatment", "time", "labelID")
+          myPhenoData <-as.data.frame( myPhenoData)
+         class( myPhenoData )
+          myPhenoData$group <- factor(myPhenoData$group)
+          myPhenoData$sampleName <- factor(myPhenoData$sampleName)
+        myPhenoData$cellFile <- factor(myPhenoData$cellFile)
+     myPhenoData$cell_line <- factor(myPhenoData$cell_line)
+   myPhenoData$treatment <- factor(myPhenoData$treatment)
+  myPhenoData$time <- factor(myPhenoData$time)
+print(myPhenoData)
+
+#check if level # is correct:
+  if ( length( levels( myPhenoData$cellFile ) ) != 96 | length( levels( myPhenoData$sampleName ) ) != 96 | 
+          length( levels( myPhenoData$cell_line ) ) != 3 | length( levels( myPhenoData$treatment ) ) != 5 | 
+            length( levels( myPhenoData$time ) ) != 2 ) 
+    {
+    stop( "Incorrect phenoData loaded or phenodata processing error" )
+    }
+#updata pheno data
+pData(myData) <- myPhenoData
+
+sampleNames(phenoData(myData)) <- myPhenoData$sampleName
+sampleNames(protocolData(myData)) <- myPhenoData$sampleName 
+
+
+#default rma wrapper: default backgr substr, mod emp bayes
+eSetrma <- rma( myData )
+ print( pData( eSetrma ) )$group
+
+# vsn achtergrond met emp bayes
+vsnData <- vsnrma( myData )
+print( pData( vsnData ) )
+
+#quality control report:
+intgroup = c( "treatment", "group", "sampleName", "cellFile", "cell_line", "time", "labelID" )
+  arrayQualityMetrics( eSetrma, intgroup = intgroup  ) 
+    arrayQualityMetrics( vsnData, intgroup = intgroup )
+    
+rm("myData", "eSetrma", "vsnData")
+# filter genes at saturation level (for all conditions), background level (for all conditions), or with low variance in all arrays -> can all be done with IQR filtering
+eSetrmaF <- nsFilter( eSetrma,  var.func = IQR, filterByQuantile=TRUE, var.cutoff = 0.5, remove.dupEntrez = TRUE, require.entrez=TRUE )
+print( eSetrmaF )
+eSetrmaF <- eSetrmaF$eset
+dim(exprs(eSetrmaF))
+
+vsnDataF <- nsFilter( vsnData,  var.func = IQR, filterByQuantile=TRUE, var.cutoff = 0.5, remove.dupEntrez = TRUE, require.entrez=TRUE )
+print( vsnDataF )
+vsnDataF <- vsnDataF$eset
+# nu voor eSetrmaF & vsnDataF een linear model opzetten mbv package limma
+limmaUsersGuide( )
+print( varLabels( phenoData( eSetrmaF ) ) )
+# create desing matrix  
+cellLine <- eSetrmaF$cell_line
+  treatment <- eSetrmaF$treatment
+    time <- eSetrmaF$time
+
+allCombos <- paste( cellLine, treatment, time, sep = "."  )
+    allCombos <- factor( allCombos )
+      design <- model.matrix( ~0 + allCombos )
+        colnames( design ) <- levels( allCombos )
+          fitAll <- lmFit( eSetrmaF, design )
+
+
+# extract questions (coefficients) of interest with contrast matrix
+# first main effects
+
+# the contrast matrix is used to find the coefficients for the linear combinations of the coefficients that were estimated from the linear model fit.
+# this probably means the contrast matrix will influence the results, depending if also interaction terms are included. Testing this here
+# first some testing: difference of IRA and IRB cell lines in response to glarg 6h, also extract IGF1_glarg_6 vs matched controls, then do the same 
+# using a contrast matrix where an interaction term is introduced 
+# Then change some more in contrast matrix to check effects 
+colnames(design)
+#with interaction
+cont.matrix1 <- makeContrasts( IGF1_glarg_6 = IGF1R.glargine.6h-IGF1R.control.6h,
+                               IRA_IRB_glarg_6h =  ( IRA.glargine.6h - IRA.control.6h ) - ( IRB.glargine.6h - IRB.control.6h ),
+                              levels = design )
+  fitAll2 <- contrasts.fit(fitAll, cont.matrix1)
+    fitAll3 <- eBayes(fitAll2)
+      
+#without interaction
+  cont.matrix2 <- makeContrasts( IGF1_glarg_6 = IGF1R.glargine.6h-IGF1R.control.6h,
+                                                              
+                              levels = design )
+      fitAll4 <- contrasts.fit(fitAll, cont.matrix2)
+      fitAll5 <- eBayes(fitAll4)
+
+DEG_withI <- topTable( fitAll3[,"IGF1_glarg_6"] )
+DEG_noI <- topTable( fitAll5[, "IGF1_glarg_6"] , number = 100)
+dim(fitAll5)
+topTable( fitAll3[ , 1] )
+topTable( fitAll5[ , 1] )
+
+fitAll5$contrasts
+
+
+?topTable
+
+
+# verification by simple matched control t-tests
+IGF1_glarg_6SEL <- eSetrmaF[,eSetrmaF$group =="IGF1R_glargine_6h" |eSetrmaF$group == "IGF1R_control_6h"]
+pData(IGF1_glarg_6SEL)
+IGF1_glarg_6SEL$groupInd <- c(2,1,1,1,2,2,2)
+tt <- rowttests( IGF1_glarg_6SEL,  "groupInd")
+
+topTT <- (tt[order(tt$p.value),  ])
+topTTT <- topTT[tt$p.value<0.01,]
+dim(topTTT)
+length(intersect(rownames(topTTT), DEG_noI$ID )  ) /nrow(topTTT)
+head(topTT)
+dim(DEG_noI)
+
+mget( DEG_noI$ID, env = hthgu133pluspm.db$SYMBOL )
+?mget
+?order
+vignette(hthgu133pluspm)
+```
+
+
+Een idee voor TGP
+ Om alle sign genen van alle contrasten van interesse te krijgen. daarna goCluster? 
+results <- decideTests(fit2)
+index <- apply(results, 1, any)
+sigchange <- eset[index,]
+
+
